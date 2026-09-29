@@ -360,6 +360,9 @@
       <span class="serif" id="cal-label"></span>
       <button class="arrow" id="cal-next" aria-label="次の月">›</button>
     </div>
+    <div style="display:flex; justify-content:flex-end; margin:-2px 0 8px;">
+      <button class="btn btn-small" id="cal-today" hidden>今月へ</button>
+    </div>
     <div class="calgrid" id="calgrid"></div>
     <div class="calfoot">
       <span class="muted" id="cal-count"></span>
@@ -381,7 +384,7 @@
     </div>
     <div id="list-search" hidden>
       <div class="card searchbox">
-        <input type="search" id="q-kw" placeholder="キーワード（空白で区切ると両方を含む）">
+        <input type="search" id="q-kw" placeholder="キーワード（日記と料理記録から探す）">
         <div class="two">
           <select class="sel" id="q-tag"><option value="">#タグ すべて</option></select>
           <select class="sel" id="q-person"><option value="">@人物 すべて</option></select>
@@ -979,11 +982,24 @@ function recipeLabel(r) {
   if (shop) return { title: r.title || shop[2], sub: '🏮 ' + shop[1] };
   return { title: r.title || '(タイトルなし)', sub: '' };
 }
-function mealsLine(day) {
+function mealsLine(day, kws) {
   const list = S.recipesByDay.get(day);
   if (!list || !list.length) return '';
-  const names = list.map(r => recipeLabel(r).title);
-  return `<div class="meals">🍚 ${esc(names.slice(0, 4).join('、'))}${names.length > 4 ? ` ほか${names.length - 4}品` : ''}</div>`;
+  let names = list.map(r => ({ name: recipeLabel(r).title, text: recipeText(r) }));
+  const k = (kws || []).map(x => x.toLowerCase());
+  if (k.length) {
+    // 検索語に当たった料理を先頭に
+    const hit = n => k.some(w => n.text.toLowerCase().includes(w));
+    names = names.filter(hit).concat(names.filter(n => !hit(n)));
+  }
+  const shown = names.slice(0, 4).map(n => highlight(n.name, kws || [])).join('、');
+  return `<div class="meals">🍚 ${shown}${names.length > 4 ? ` ほか${names.length - 4}品` : ''}</div>`;
+}
+// 検索用：料理名＋材料・作り方・店名・メニュー
+function recipeText(r) { return [r.title || '', r.comment || ''].join('\n'); }
+function mealTextFor(day) {
+  const list = S.recipesByDay.get(day);
+  return list ? list.map(recipeText).join('\n') : '';
 }
 function renderMeals() {
   const list = S.recipesByDay.get(S.day) || [];
@@ -1036,7 +1052,7 @@ function entryCard(e, kws, showYear) {
     <div class="head"><span class="d mono">${showYear ? e.day.slice(2, 4) + '/' : ''}${m}/${d}(${C.weekday(e.day)})</span>${title}</div>
     ${e.body ? `<div class="bd"${e.title ? '' : ' style="color:var(--ink);"'}>${highlight(e.body, k)}</div>` : ''}
     ${chipsHtml(e)}
-    ${mealsLine(e.day)}
+    ${e.mealOnly ? '<div class="note" style="margin:0 0 4px;">日記なし（料理記録のみ）</div>' : ''}${mealsLine(e.day, k)}
   </article>`;
 }
 
@@ -1068,6 +1084,7 @@ function renderCalendar() {
   }
   $('calgrid').innerHTML = html;
   $('cal-count').textContent = countable ? `${countable}日中 ${count}日 記録` : '';
+  $('cal-today').hidden = S.calMonth === today().slice(0, 7);
 }
 function fillTagSelect(sel, withPeople, placeholder) {
   const cur = sel.value;
@@ -1149,8 +1166,16 @@ function runSearch() {
   const q = { keyword: $('q-kw').value, tag: $('q-tag').value, person: $('q-person').value, from: $('q-from').value, to: $('q-to').value };
   const any = q.keyword.trim() || q.tag || q.person || q.from || q.to;
   if (!any) { $('q-count').textContent = 'キーワードやタグで絞り込めます。'; $('q-results').innerHTML = ''; return; }
-  const res = C.search(S.entries, q);
-  $('q-count').textContent = `${res.length}件`;
+  // 料理も探す：日記の日は料理の文字も対象にし、料理記録だけの日も候補に入れる
+  const pool = S.entries.map(e => ({ ...e, mealText: mealTextFor(e.day) }));
+  if (!q.tag && !q.person) {
+    for (const day of S.recipesByDay.keys()) {
+      if (!S.entryMap.has(day)) pool.push({ day, title: '', body: '', tags: [], people: [], mealText: mealTextFor(day), mealOnly: true });
+    }
+  }
+  const res = C.search(pool, q);
+  const mealOnly = res.filter(e => e.mealOnly).length;
+  $('q-count').textContent = `${res.length}件` + (mealOnly ? `（うち料理記録だけの日 ${mealOnly}件）` : '');
   const kws = q.keyword.trim().split(/\s+/).filter(Boolean);
   $('q-results').innerHTML = res.slice(0, 200).map(e => entryCard(e, kws, true)).join('')
     + (res.length > 200 ? `<p class="muted">先頭200件を表示しています。条件を絞ってください。</p>` : '');
@@ -1491,10 +1516,12 @@ $('tabs').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-view]');
   if (!b) return;
   if (b.dataset.view === 'today' && S.view === 'today') { openDay(today()); return; }
+  if (b.dataset.view === 'calendar' && S.view === 'calendar') { S.calMonth = today().slice(0, 7); renderCalendar(); return; }
   switchView(b.dataset.view);
 });
 $('cal-prev').addEventListener('click', () => { const [y, m] = S.calMonth.split('-').map(Number); const d = new Date(y, m - 2, 1); S.calMonth = C.toDay(d).slice(0, 7); renderCalendar(); });
 $('cal-next').addEventListener('click', () => { const [y, m] = S.calMonth.split('-').map(Number); const d = new Date(y, m, 1); S.calMonth = C.toDay(d).slice(0, 7); renderCalendar(); });
+$('cal-today').addEventListener('click', () => { S.calMonth = today().slice(0, 7); renderCalendar(); });
 $('cal-tag').addEventListener('change', renderCalendar);
 $('list-seg').addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (!b) return; S.listMode = b.dataset.mode; renderList(); });
 $('tag-seg').addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (!b) return; S.tagMode = b.dataset.mode; openTag = null; renderTags(); });

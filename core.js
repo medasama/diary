@@ -232,7 +232,7 @@
       if (q.tag && !(e.tags || []).includes(q.tag)) return false;
       if (q.person && !(e.people || []).includes(q.person)) return false;
       if (kw.length) {
-        const hay = [e.title, e.body, ...(e.tags || []), ...(e.people || [])].join('\n').toLowerCase();
+        const hay = [e.title, e.body, e.mealText || '', ...(e.tags || []), ...(e.people || [])].join('\n').toLowerCase();
         if (!kw.every(k => hay.includes(k))) return false;
       }
       return true;
