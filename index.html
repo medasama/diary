@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>日記帳</title>
+<meta name="theme-color" content="#eae6da">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="日記帳">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap');
+
+  :root {
+    --paper: #eae6da;
+    --paper-card: #f4f1e8;
+    --paper-deep: #e1dccd;
+    --ink: #2b3a42;
+    --ink-light: #6b7880;
+    --line: #c7bfa9;
+    --stamp: #a5432f;
+    --tape: #ddd2b3;
+    --sage: #6b7a5e;
+    --plum: #7a5a78;
+    --tabbar-h: 60px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; max-width: 100%; overflow-x: hidden; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    -webkit-text-size-adjust: 100%;
+    padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 16px);
+  }
+  button { font-family: inherit; color: inherit; }
+  input, textarea, select { font-family: inherit; color: var(--ink); }
+  .serif { font-family: 'Shippori Mincho', serif; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  [hidden] { display: none !important; }
+
+  /* ---------- header ---------- */
+  header.top {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--paper);
+    padding: calc(10px + env(safe-area-inset-top)) 16px 8px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid transparent;
+  }
+  header.top.scrolled { border-bottom-color: var(--line); }
+  header.top h1 { font-size: 20px; margin: 0; flex: 1; }
+  .sync {
+    font-size: 11px; color: var(--ink-light); display: inline-flex; align-items: center; gap: 5px;
+    border: none; background: none; padding: 4px 6px; cursor: pointer;
+  }
+  .sync .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sage); }
+  .sync.pending .dot, .sync.syncing .dot { background: var(--tape); border: 1px solid var(--line); }
+  .sync.error .dot, .sync.offline .dot { background: var(--stamp); }
+  .gear { background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; color: var(--ink-light); }
+
+  main { padding: 4px 12px 20px; max-width: 760px; margin: 0 auto; }
+  @media (min-width: 600px) { main { padding: 8px 24px 24px; } }
+
+  /* ---------- common ---------- */
+  .card {
+    background: var(--paper-card); border: 1px solid var(--line);
+    box-shadow: 2px 3px 0 rgba(43,58,66,0.06); border-radius: 3px;
+  }
+  .section-title { font-size: 13px; color: var(--ink-light); margin: 22px 2px 8px; display: flex; align-items: baseline; gap: 8px; }
+  .section-title .serif { font-size: 16px; color: var(--ink); }
+  .muted { color: var(--ink-light); font-size: 13px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border: 1px solid var(--line); background: transparent; color: var(--ink);
+    padding: 8px 12px; border-radius: 3px; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  .btn-ink { background: var(--ink); color: var(--paper-card); border-color: var(--ink); }
+  .btn-danger { color: var(--stamp); border-color: var(--stamp); }
+  .btn-small { padding: 5px 9px; font-size: 12px; }
+  .linkbtn { background: none; border: none; color: var(--ink-light); font-size: 12px; cursor: pointer; padding: 4px; text-decoration: underline; }
+  .stamp {
+    display: inline-block; transform: rotate(-2deg);
+    border: 2px solid var(--stamp); color: var(--stamp); background: var(--paper-card);
+    font-size: 11px; padding: 2px 7px; border-radius: 3px; white-space: nowrap; line-height: 1.3;
+  }
+  .tagchip, .personchip {
+    display: inline-block; font-size: 12px; border-radius: 10px; padding: 1px 8px; white-space: nowrap;
+    border: 1px solid var(--sage); color: var(--sage); background: rgba(107,122,94,0.07);
+  }
+  .personchip { border-color: var(--plum); color: var(--plum); background: rgba(122,90,120,0.07); }
+  .chips-inline { display: flex; flex-wrap: wrap; gap: 4px; }
+  .note { font-size: 12px; color: var(--ink-light); margin: 6px 2px 0; line-height: 1.5; }
+  .err { font-size: 12px; color: var(--stamp); margin: 6px 2px 0; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; margin: 6px 0 12px; }
+  .seg button { flex: 1; font-size: 13px; padding: 8px 6px; border: none; background: transparent; color: var(--ink-light); cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.active { background: var(--ink); color: var(--paper-card); }
+
+  /* ---------- today ---------- */
+  .datebar { display: flex; align-items: center; gap: 6px; margin: 4px 0 10px; }
+  .datebar .arrow { background: none; border: 1px solid var(--line); border-radius: 50%; width: 34px; height: 34px; cursor: pointer; font-size: 15px; flex-shrink: 0; }
+  .datebar .datelabel { flex: 1; text-align: center; position: relative; }
+  .datebar .datelabel .serif { font-size: 19px; }
+  .datebar .datelabel .yr { font-size: 11px; color: var(--ink-light); display: block; }
+  .datebar .datelabel input[type=date] { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+  .todaybtn { font-size: 12px; }
+
+  .form { padding: 14px; }
+  .form label.lbl { display: block; font-size: 12px; color: var(--ink-light); margin: 0 0 4px; }
+  .form .row { margin-bottom: 12px; }
+  .title-input {
+    width: 100%; font-size: 18px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 3px;
+    background: #fbf9f3; font-family: 'Shippori Mincho', serif; font-weight: 600;
+  }
+  .body-input {
+    width: 100%; font-size: 16px; line-height: 1.7; padding: 8px 10px; border: 1px solid var(--line);
+    border-radius: 3px; background: #fbf9f3; min-height: 120px; resize: none; overflow: hidden;
+  }
+  .chipfield {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 5px 6px; min-height: 40px;
+    border: 1px solid var(--line); border-radius: 3px; background: #fbf9f3;
+  }
+  .chipfield .chips { display: contents; }
+  .chipfield .chip { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; padding: 2px 4px 2px 9px; border-radius: 12px; border: 1px solid var(--sage); color: var(--sage); background: rgba(107,122,94,0.08); }
+  .chipfield.people .chip { border-color: var(--plum); color: var(--plum); background: rgba(122,90,120,0.08); }
+  .chipfield .chip button { border: none; background: none; cursor: pointer; font-size: 13px; padding: 0 4px; color: inherit; opacity: 0.7; }
+  .chipfield input { flex: 1; min-width: 90px; border: none; background: transparent; font-size: 16px; padding: 4px; outline: none; }
+  .suggest { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .suggest button {
+    font-size: 12px; padding: 3px 9px; border-radius: 12px; cursor: pointer;
+    border: 1px dashed var(--line); background: transparent; color: var(--ink-light);
+  }
+  .form-actions { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .form-actions .btn-ink { flex: 1; padding: 11px; font-size: 15px; }
+  .savestate { font-size: 12px; color: var(--ink-light); margin-top: 8px; min-height: 16px; }
+  .occ { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 10px; font-size: 12px; color: var(--ink-light); }
+  .occ b { color: var(--ink); font-weight: 500; }
+  .banner { font-size: 12px; background: var(--tape); padding: 8px 10px; border-radius: 3px; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+
+  .meal-list { display: grid; gap: 8px; }
+  .meal { display: flex; gap: 10px; align-items: center; padding: 8px; }
+  .meal .ph { width: 52px; height: 52px; flex-shrink: 0; border-radius: 2px; background: var(--paper); display: flex; align-items: center; justify-content: center; font-size: 20px; overflow: hidden; }
+  .meal .ph img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
+  .meal .t { font-size: 14px; }
+  .meal .s { font-size: 11px; color: var(--ink-light); }
+
+  .past { padding: 12px; cursor: pointer; margin-bottom: 8px; }
+  .past .when { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .past .pastbody { font-size: 13px; color: var(--ink-light); line-height: 1.6; margin: 0 0 8px; white-space: pre-wrap; word-break: break-word;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .past .meals { font-size: 12px; color: var(--ink-light); margin-top: 6px; }
+  .past .when .ago { font-size: 12px; color: var(--stamp); font-weight: 700; }
+  .missing { display: flex; flex-wrap: wrap; gap: 6px; }
+  .missing button { font-size: 12px; padding: 5px 9px; border: 1px dashed var(--stamp); color: var(--stamp); background: transparent; border-radius: 3px; cursor: pointer; }
+
+  /* ---------- entry card ---------- */
+  .entry { padding: 12px 14px; cursor: pointer; margin-bottom: 8px; }
+  .entry:active { background: #ece7d8; }
+  .entry .head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .entry .d { font-size: 12px; color: var(--ink-light); white-space: nowrap; }
+  .entry .ttl { font-size: 16px; margin: 0; word-break: break-word; }
+  .entry .ttl.nott { font-family: inherit; font-size: 14px; font-weight: 400; }
+  .entry .bd { font-size: 13px; color: var(--ink-light); line-height: 1.55; margin: 4px 0 6px; white-space: pre-wrap; word-break: break-word;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .entry .meals { font-size: 12px; color: var(--ink-light); margin-top: 6px; }
+  .monthhead { font-size: 15px; margin: 20px 2px 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; }
+  .monthhead small { font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 12px; color: var(--ink-light); font-weight: 400; }
+  .group .items { margin: 6px 0 0; padding-left: 14px; border-left: 2px solid var(--tape); }
+  .group .items div { font-size: 13px; margin: 3px 0; }
+  mark { background: #f1dfa6; color: inherit; padding: 0 1px; }
+
+  /* ---------- calendar ---------- */
+  .calhead { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
+  .calhead .serif { flex: 1; text-align: center; font-size: 19px; }
+  .calhead .arrow { background: none; border: 1px solid var(--line); border-radius: 50%; width: 34px; height: 34px; cursor: pointer; }
+  .calgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .calgrid .wd { font-size: 11px; text-align: center; color: var(--ink-light); padding: 2px 0; }
+  .calgrid .wd.sun { color: var(--stamp); }
+  .cell {
+    min-height: 64px; border: 1px solid var(--line); border-radius: 3px; background: transparent;
+    padding: 3px 3px 4px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 2px; overflow: hidden;
+  }
+  .cell .n { font-size: 11px; color: var(--ink-light); }
+  .cell.sun .n { color: var(--stamp); }
+  .cell .h { font-size: 10px; line-height: 1.3; word-break: break-all; color: var(--ink); max-height: 39px; overflow: hidden; }
+  .cell.has { background: var(--paper-card); border-color: #b9b09a; }
+  .cell.has.tt .h { font-weight: 700; }
+  .cell.blank { opacity: 0.5; border-style: dashed; }
+  .cell.future { opacity: 0.35; border-style: dotted; }
+  .cell.today { outline: 2px solid var(--ink); outline-offset: -1px; }
+  .cell.hl { background: rgba(107,122,94,0.25); border-color: var(--sage); }
+  .cell.dim { opacity: 0.35; }
+  .cell.empty { border: none; cursor: default; background: none; }
+  @media (min-width: 600px) { .cell { min-height: 78px; } .cell .h { font-size: 11px; max-height: 54px; } }
+  .calfoot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 8px; flex-wrap: wrap; }
+  select.sel { font-size: 14px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--paper-card); max-width: 100%; }
+
+  /* ---------- search / tags ---------- */
+  .searchbox { padding: 12px; display: grid; gap: 8px; }
+  .searchbox input[type=search], .searchbox input[type=text] { width: 100%; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 3px; background: #fbf9f3; }
+  .searchbox .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .searchbox input[type=date] { width: 100%; font-size: 14px; padding: 6px; border: 1px solid var(--line); border-radius: 3px; background: #fbf9f3; }
+  .yearchips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+  .yearchips button { font-size: 12px; padding: 5px 12px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: var(--ink-light); cursor: pointer; }
+  .yearchips button.active { background: var(--ink); color: var(--paper-card); border-color: var(--ink); }
+
+  .tagrow { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .tagrow:last-child { border-bottom: none; }
+  .tagrow .top { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .tagrow .nm { flex: 1; font-size: 15px; word-break: break-all; }
+  .tagrow .cnt { font-size: 12px; color: var(--ink-light); white-space: nowrap; }
+  .tagrow .cnt b { color: var(--ink); font-size: 14px; }
+  .tagrow .detail { margin-top: 8px; }
+  .tagrow .days { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+  .tagrow .days button { font-size: 11px; padding: 3px 7px; border: 1px solid var(--line); background: var(--paper); border-radius: 3px; cursor: pointer; }
+  details.tool { padding: 12px; margin-bottom: 12px; }
+  details.tool summary { cursor: pointer; font-size: 14px; }
+  .tool .fields { display: grid; gap: 8px; margin-top: 10px; }
+  .tool input[type=text] { width: 100%; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 3px; background: #fbf9f3; }
+  .hits { max-height: 320px; overflow: auto; margin-top: 8px; border-top: 1px solid var(--line); }
+  .hit { display: flex; gap: 8px; align-items: flex-start; padding: 7px 2px; border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .hit input { margin-top: 3px; width: 18px; height: 18px; flex-shrink: 0; }
+  .hit .d { color: var(--ink-light); font-size: 11px; white-space: nowrap; }
+
+  /* ---------- tab bar ---------- */
+  nav.tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    background: var(--paper-card); border-top: 1px solid var(--line);
+    display: flex; padding-bottom: env(safe-area-inset-bottom);
+  }
+  nav.tabs button {
+    flex: 1; height: var(--tabbar-h); border: none; background: none; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    font-size: 11px; color: var(--ink-light);
+  }
+  nav.tabs button .ic { font-size: 19px; line-height: 1; filter: grayscale(1); opacity: 0.7; }
+  nav.tabs button.active { color: var(--ink); font-weight: 700; }
+  nav.tabs button.active .ic { filter: none; opacity: 1; }
+
+  /* ---------- overlays ---------- */
+  .overlay { position: fixed; inset: 0; z-index: 100; background: rgba(43,58,66,0.45); display: flex; align-items: flex-end; justify-content: center; }
+  @media (min-width: 600px) { .overlay { align-items: center; } }
+  .sheet { background: var(--paper); width: 100%; max-width: 560px; max-height: 92vh; overflow: auto; border-radius: 10px 10px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); }
+  @media (min-width: 600px) { .sheet { border-radius: 8px; } }
+  .sheet h2 { margin: 0 0 4px; font-size: 19px; display: flex; justify-content: space-between; align-items: center; }
+  .sheet h3 { font-size: 14px; margin: 18px 0 6px; }
+  .sheet .box { padding: 12px; }
+  .sheet .close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--ink-light); }
+  .optrow { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin: 6px 0; }
+  .optrow input { width: 18px; height: 18px; margin-top: 1px; flex-shrink: 0; }
+
+  #lock { position: fixed; inset: 0; z-index: 200; background: var(--paper); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  #lock .inner { width: 100%; max-width: 360px; }
+  #lock h1 { font-size: 28px; margin: 0 0 6px; }
+  #lock input { width: 100%; font-size: 18px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 3px; background: var(--paper-card); margin-top: 10px; }
+  #lock .btn-ink { width: 100%; margin-top: 14px; padding: 12px; font-size: 15px; }
+
+  #lightbox { position: fixed; inset: 0; background: rgba(20,22,20,0.88); z-index: 300; display: flex; align-items: center; justify-content: center; padding: 20px; cursor: zoom-out; }
+  #lightbox img { max-width: 100%; max-height: 100%; border-radius: 4px; }
+  #toast { position: fixed; left: 50%; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 14px); transform: translateX(-50%); z-index: 150;
+    background: var(--ink); color: var(--paper-card); font-size: 13px; padding: 8px 14px; border-radius: 16px; max-width: 90vw; text-align: center; }
+  .spin { display: inline-block; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ================= 合言葉 ================= -->
+<div id="lock" hidden>
+  <div class="inner">
+    <p class="muted mono" style="margin:0; letter-spacing:.1em; font-size:11px;">DIARY</p>
+    <h1 class="serif">日記帳</h1>
+    <p class="muted" id="lock-msg">合言葉を入力してください。この端末では次回から入力不要です。</p>
+    <input type="password" id="lock-pass" placeholder="合言葉" autocomplete="current-password">
+    <input type="password" id="lock-pass2" placeholder="確認のため、もう一度" autocomplete="new-password" hidden>
+    <p class="err" id="lock-err" hidden></p>
+    <button class="btn btn-ink" id="lock-btn">開く</button>
+    <p class="note">合言葉を忘れると、誰にも（作った人にも）復元できません。</p>
+  </div>
+</div>
+
+<header class="top" id="topbar">
+  <h1 class="serif" id="view-title">日記帳</h1>
+  <button class="sync" id="sync-btn" title="同期の状態"><span class="dot"></span><span id="sync-text">—</span></button>
+  <button class="gear" id="settings-btn" aria-label="設定">⚙︎</button>
+</header>
+
+<main>
+  <!-- ================= 今日 ================= -->
+  <section id="view-today">
+    <div class="datebar">
+      <button class="arrow" id="prev-day" aria-label="前の日">‹</button>
+      <div class="datelabel">
+        <span class="yr mono" id="date-year"></span>
+        <span class="serif" id="date-label"></span>
+        <input type="date" id="date-picker" aria-label="日付を選ぶ">
+      </div>
+      <button class="arrow" id="next-day" aria-label="次の日">›</button>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:-4px 2px 8px;">
+      <button class="linkbtn" id="photo-date-btn">📷 写真の日付で開く</button>
+      <input type="file" id="photo-date-input" accept="image/*,.heic,.heif" hidden>
+      <button class="btn btn-small todaybtn" id="goto-today" hidden>今日へ</button>
+    </div>
+
+    <div class="banner" id="remote-banner" hidden>
+      <span>別の端末でこの日が更新されました。</span>
+      <button class="btn btn-small" id="remote-load">読み込む</button>
+    </div>
+
+    <div class="card form">
+      <div class="row">
+        <label class="lbl" for="in-title">出来事（一言でOK・これだけで記録済み）</label>
+        <input type="text" class="title-input" id="in-title" placeholder="例：北野神社、ピラティス" enterkeyhint="next" autocomplete="off">
+      </div>
+      <div class="row">
+        <label class="lbl" for="in-body">本文（任意）</label>
+        <textarea class="body-input" id="in-body" placeholder="あったこと、思ったこと。短くても大丈夫。"></textarea>
+      </div>
+      <div class="row">
+        <label class="lbl"># タグ（場所・行事・種類）</label>
+        <div class="chipfield" id="tags-field"><span class="chips"></span><input type="text" placeholder="入力してEnter" enterkeyhint="done" autocomplete="off"></div>
+        <div class="suggest" id="tags-suggest"></div>
+      </div>
+      <div class="row">
+        <label class="lbl">@ 人物（誰と）</label>
+        <div class="chipfield people" id="people-field"><span class="chips"></span><input type="text" placeholder="入力してEnter" enterkeyhint="done" autocomplete="off"></div>
+        <div class="suggest" id="people-suggest"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ink" id="save-btn" disabled>保存</button>
+        <button class="btn btn-danger btn-small" id="delete-btn" hidden>削除</button>
+      </div>
+      <div class="savestate" id="save-state"></div>
+      <div class="occ" id="occ"></div>
+    </div>
+
+    <div id="meals-wrap" hidden>
+      <div class="section-title"><span class="serif">この日の食事</span><span>料理記録より</span></div>
+      <div class="meal-list" id="meals"></div>
+    </div>
+
+    <div class="section-title"><span class="serif">過去のこの日</span></div>
+    <div id="past"></div>
+
+    <div id="missing-wrap" hidden>
+      <div class="section-title"><span class="serif">書いていない日</span><span id="missing-count"></span></div>
+      <div class="missing" id="missing"></div>
+      <p class="note">タップするとその日を開きます。見出し一言だけでも「記録済み」になります。</p>
+    </div>
+  </section>
+
+  <!-- ================= カレンダー ================= -->
+  <section id="view-calendar" hidden>
+    <div class="calhead">
+      <button class="arrow" id="cal-prev" aria-label="前の月">‹</button>
+      <span class="serif" id="cal-label"></span>
+      <button class="arrow" id="cal-next" aria-label="次の月">›</button>
+    </div>
+    <div class="calgrid" id="calgrid"></div>
+    <div class="calfoot">
+      <span class="muted" id="cal-count"></span>
+      <select class="sel" id="cal-tag"><option value="">タグで色付け…</option></select>
+    </div>
+  </section>
+
+  <!-- ================= 一覧 ================= -->
+  <section id="view-list" hidden>
+    <div class="seg" id="list-seg">
+      <button data-mode="timeline" class="active">タイムライン</button>
+      <button data-mode="events">イベント</button>
+      <button data-mode="search">検索</button>
+    </div>
+    <div id="list-timeline"></div>
+    <div id="list-events" hidden>
+      <div class="yearchips" id="event-years"></div>
+      <div id="event-list"></div>
+    </div>
+    <div id="list-search" hidden>
+      <div class="card searchbox">
+        <input type="search" id="q-kw" placeholder="キーワード（空白で区切ると両方を含む）">
+        <div class="two">
+          <select class="sel" id="q-tag"><option value="">#タグ すべて</option></select>
+          <select class="sel" id="q-person"><option value="">@人物 すべて</option></select>
+        </div>
+        <div class="two">
+          <input type="date" id="q-from" aria-label="いつから">
+          <input type="date" id="q-to" aria-label="いつまで">
+        </div>
+      </div>
+      <p class="muted" id="q-count" style="margin:10px 2px;"></p>
+      <div id="q-results"></div>
+    </div>
+  </section>
+
+  <!-- ================= タグ ================= -->
+  <section id="view-tags" hidden>
+    <details class="card tool" id="bulk-tool">
+      <summary class="serif">キーワードで一括タグ付け</summary>
+      <p class="note">過去の日記から言葉を探して、まとめてタグを付けます。表記ゆれは「|」で区切って並べます（例：<span class="mono">北野|北の神社</span>）。</p>
+      <div class="fields">
+        <input type="text" id="bulk-kw" placeholder="探す言葉（例：北野|北の神社）">
+        <div style="display:flex; gap:8px;">
+          <select class="sel" id="bulk-kind"><option value="tags">#タグ</option><option value="people">@人物</option></select>
+          <input type="text" id="bulk-name" placeholder="付ける名前（例：北野神社）" style="flex:1;">
+        </div>
+        <button class="btn" id="bulk-find">探す</button>
+      </div>
+      <div id="bulk-result"></div>
+    </details>
+
+    <div class="seg" id="tag-seg">
+      <button data-mode="tags" class="active"># タグ</button>
+      <button data-mode="people">@ 人物</button>
+    </div>
+    <div class="card" id="tag-list"></div>
+  </section>
+</main>
+
+<nav class="tabs" id="tabs">
+  <button data-view="today" class="active"><span class="ic">✏️</span>今日</button>
+  <button data-view="calendar"><span class="ic">📅</span>カレンダー</button>
+  <button data-view="list"><span class="ic">📖</span>一覧</button>
+  <button data-view="tags"><span class="ic">🏷️</span>タグ</button>
+</nav>
+
+<!-- ================= 設定 ================= -->
+<div class="overlay" id="settings" hidden>
+  <div class="sheet">
+    <h2 class="serif">設定 <button class="close" id="settings-close" aria-label="閉じる">✕</button></h2>
+    <p class="muted" id="st-summary"></p>
+
+    <h3>同期</h3>
+    <div class="card box">
+      <p class="muted" id="st-sync" style="margin:0 0 10px;"></p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn" id="st-sync-now">今すぐ同期</button>
+        <button class="btn" id="st-full">全件を読み直す</button>
+        <button class="btn" id="st-guard">守りの確認</button>
+      </div>
+      <p class="note" id="st-guard-res"></p>
+    </div>
+
+    <h3>スプレッドシートから取り込む</h3>
+    <div class="card box">
+      <p class="note" style="margin-top:0;">Googleスプレッドシートで「ファイル → ダウンロード → カンマ区切り形式（.csv）」を年ごとに保存し、まとめて選んでください。既に記録がある日は飛ばすので、何度取り込んでも重複しません。</p>
+      <input type="file" id="csv-input" accept=".csv,text/csv,text/plain" multiple>
+      <label class="optrow"><input type="checkbox" id="csv-event" checked><span>「イベント」にチェックがある日に <b>#イベント</b> を付ける</span></label>
+      <label class="optrow"><input type="checkbox" id="csv-other"><span>「日常・気づき・思索」もタグとして残す</span></label>
+      <p class="muted" id="csv-preview"></p>
+      <button class="btn btn-ink" id="csv-go" hidden>取り込む</button>
+    </div>
+
+    <h3>書き出し（バックアップ）</h3>
+    <div class="card box">
+      <p class="note" style="margin-top:0;">全部の日記を1つのファイル（JSON）で保存します。<b>暗号化されていない</b>ので、保存場所に注意してください。</p>
+      <button class="btn" id="st-export">書き出す</button>
+    </div>
+
+    <h3>この端末</h3>
+    <div class="card box">
+      <p class="note" style="margin-top:0;">合言葉の記憶と、この端末のコピーを消します。サーバーの日記は消えません。次に開くときは合言葉が必要です。</p>
+      <button class="btn btn-danger" id="st-lock">この端末からロックする</button>
+    </div>
+  </div>
+</div>
+
+<div id="lightbox" hidden><img id="lightbox-img" alt="拡大写真"></div>
+<div id="toast" hidden></div>
+
+<script src="core.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+<script>
+'use strict';
+// =====================================================================
+// 設定（料理記録と同じSupabaseプロジェクト）
+// =====================================================================
+const SUPABASE_URL = 'https://edfrjxjdzxutcjeayfac.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_GVtanlT_gDwSEQSsZPC_NQ_nEK-60x2';
+const TABLE = 'diary-entries';
+const RECIPE_TABLE = 'recipe-log';
+
+const C = window.DiaryCore;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const today = () => C.toDay(new Date());
+
+let supa = null;
+try { if (window.supabase) supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch (e) { supa = null; }
+
+const S = {
+  key: null,
+  rows: new Map(),      // id -> {id,day,iv,ciphertext}（サーバーの行・暗号文のまま）
+  outbox: new Map(),    // lid -> {lid,day,iv,ciphertext}（未送信）
+  dec: new Map(),       // 'r'+id / 'o'+lid -> 復号した版 or null
+  entryMap: new Map(),  // day -> 最新版
+  entries: [],
+  lastId: 0,
+  syncing: false, syncError: null,
+  recipesByDay: new Map(), recipesLoaded: false, recipePhotos: new Map(),
+  day: today(),
+  dirty: false, remoteChanged: false,
+  view: 'today', listMode: 'timeline', eventYear: null, tagMode: 'tags',
+  calMonth: today().slice(0, 7),
+  timelineLimit: 60,
+};
+
+// =====================================================================
+// IndexedDB（この端末のコピー）
+// =====================================================================
+const DB_NAME = 'diary-db';
+let idb = null;
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const d = req.result;
+      if (!d.objectStoreNames.contains('rows')) d.createObjectStore('rows', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('outbox')) d.createObjectStore('outbox', { keyPath: 'lid', autoIncrement: true });
+      if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'k' });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbReq(store, mode, fn) {
+  return new Promise((resolve, reject) => {
+    const tx = idb.transaction(store, mode);
+    const r = fn(tx.objectStore(store));
+    tx.oncomplete = () => resolve(r && 'result' in r ? r.result : undefined);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+const idbGetAll = (s) => idbReq(s, 'readonly', st => st.getAll());
+const idbGet = (s, k) => idbReq(s, 'readonly', st => st.get(k));
+const idbPut = (s, v) => idbReq(s, 'readwrite', st => st.put(v));
+const idbDel = (s, k) => idbReq(s, 'readwrite', st => st.delete(k));
+const idbClear = (s) => idbReq(s, 'readwrite', st => st.clear());
+function idbPutMany(s, list) {
+  return new Promise((resolve, reject) => {
+    const tx = idb.transaction(s, 'readwrite');
+    const st = tx.objectStore(s);
+    list.forEach(v => st.put(v));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// =====================================================================
+// データの読み込み・復号
+// =====================================================================
+async function decryptPending() {
+  const jobs = [];
+  for (const [id, r] of S.rows) {
+    const k = 'r' + id;
+    if (!S.dec.has(k)) jobs.push(C.decryptRow(S.key, r).then(v => S.dec.set(k, v)));
+  }
+  for (const [lid, r] of S.outbox) {
+    const k = 'o' + lid;
+    if (!S.dec.has(k)) jobs.push(C.decryptRow(S.key, r).then(v => S.dec.set(k, v)));
+  }
+  await Promise.all(jobs);
+}
+function rebuild() {
+  S.entryMap = C.reduceLatest(S.dec.values());
+  S.entries = Array.from(S.entryMap.values());
+  S._tagStats = null; S._peopleStats = null;
+}
+function stats(field) {
+  const k = field === 'tags' ? '_tagStats' : '_peopleStats';
+  if (!S[k]) S[k] = C.tagStats(S.entries, field, today().slice(0, 4));
+  return S[k];
+}
+
+async function loadLocal() {
+  const rows = await idbGetAll('rows');
+  rows.forEach(r => S.rows.set(r.id, r));
+  const ob = await idbGetAll('outbox');
+  ob.forEach(r => S.outbox.set(r.lid, r));
+  const meta = await idbGet('meta', 'lastId');
+  S.lastId = meta ? meta.v : 0;
+  await decryptPending();
+  rebuild();
+}
+
+// =====================================================================
+// 同期
+// =====================================================================
+function online() { return navigator.onLine !== false; }
+
+async function fetchRemote(fromId) {
+  const all = [];
+  let from = fromId;
+  for (;;) {
+    const { data, error } = await supa.from(TABLE).select('id,day,iv,ciphertext').gt('id', from).order('id', { ascending: true }).limit(1000);
+    if (error) throw error;
+    all.push(...data);
+    if (data.length < 1000) break;
+    from = data[data.length - 1].id;
+  }
+  return all;
+}
+
+async function flushOutbox() {
+  if (!supa || !online() || !S.outbox.size) return;
+  const items = Array.from(S.outbox.values());
+  for (let i = 0; i < items.length; i += 100) {
+    const chunk = items.slice(i, i + 100);
+    const { data, error } = await supa.from(TABLE)
+      .insert(chunk.map(r => ({ day: r.day, iv: r.iv, ciphertext: r.ciphertext })))
+      .select('id,day,iv,ciphertext');
+    if (error) throw error;
+    const byCt = new Map((data || []).map(r => [r.ciphertext, r]));
+    const stored = [];
+    for (const r of chunk) {
+      const got = byCt.get(r.ciphertext);
+      if (!got) continue;
+      S.rows.set(got.id, got); stored.push(got);
+      S.dec.set('r' + got.id, S.dec.get('o' + r.lid));
+      S.dec.delete('o' + r.lid);
+      S.outbox.delete(r.lid);
+      await idbDel('outbox', r.lid);
+    }
+    await idbPutMany('rows', stored);
+  }
+}
+
+let syncQueued = false;
+async function sync(opts) {
+  const o = opts || {};
+  if (!supa || !online()) { renderStatus(); return; }
+  if (S.syncing) { syncQueued = true; return; }
+  S.syncing = true; renderStatus();
+  try {
+    await flushOutbox();
+    const fresh = await fetchRemote(o.full ? 0 : Math.max(0, S.lastId - 20));
+    const newRows = fresh.filter(r => !S.rows.has(r.id));
+    newRows.forEach(r => S.rows.set(r.id, r));
+    if (newRows.length) await idbPutMany('rows', newRows);
+    const maxId = fresh.reduce((m, r) => Math.max(m, r.id), S.lastId);
+    if (maxId !== S.lastId) { S.lastId = maxId; await idbPut('meta', { k: 'lastId', v: maxId }); }
+    if (newRows.length) {
+      const before = S.entryMap.get(S.day);
+      await decryptPending(); rebuild();
+      afterDataChange(before);
+    }
+    S.syncError = null;
+  } catch (e) {
+    console.warn('sync failed', e);
+    S.syncError = (e && e.message) || String(e);
+  }
+  S.syncing = false; renderStatus();
+  if (syncQueued) { syncQueued = false; sync(); }
+}
+
+let channel = null;
+function subscribeRealtime() {
+  if (!supa || channel) return;
+  channel = supa.channel('diary-entries-inserts')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: TABLE }, async (payload) => {
+      const r = payload.new;
+      if (!r || S.rows.has(r.id)) return;
+      // 自分が送った行は flushOutbox で処理されるので、少し待ってから判断
+      setTimeout(async () => {
+        if (S.rows.has(r.id)) return;
+        const row = { id: r.id, day: r.day, iv: r.iv, ciphertext: r.ciphertext };
+        const mine = Array.from(S.outbox.values()).some(o => o.ciphertext === row.ciphertext);
+        if (mine) return;
+        S.rows.set(row.id, row); await idbPut('rows', row);
+        if (row.id > S.lastId) { S.lastId = row.id; await idbPut('meta', { k: 'lastId', v: row.id }); }
+        const before = S.entryMap.get(S.day);
+        await decryptPending(); rebuild(); afterDataChange(before);
+      }, 1500);
+    })
+    .subscribe();
+}
+
+function afterDataChange(beforeCurrent) {
+  const now = S.entryMap.get(S.day);
+  if (beforeCurrent !== now) {
+    if (S.dirty) { S.remoteChanged = true; $('remote-banner').hidden = false; }
+    else loadForm();
+  }
+  renderView();
+}
+
+// 1件（または複数）の版を保存：暗号化 → 端末に保存 → 送信
+async function putVersions(versions) {
+  const added = [];
+  for (const v of versions) {
+    const enc = await C.encryptRow(S.key, v);
+    const lid = await idbReq('outbox', 'readwrite', st => st.add(enc));
+    const rec = { lid, ...enc };
+    S.outbox.set(lid, rec);
+    S.dec.set('o' + lid, v);
+    added.push(rec);
+  }
+  rebuild();
+  renderStatus();
+  sync();
+  return added;
+}
+
+// =====================================================================
+// 状態表示
+// =====================================================================
+function renderStatus() {
+  const b = $('sync-btn'), t = $('sync-text');
+  b.className = 'sync';
+  const n = S.outbox.size;
+  if (!supa) { b.classList.add('offline'); t.textContent = '接続不可'; }
+  else if (!online()) { b.classList.add('offline'); t.textContent = n ? `オフライン・未送信${n}` : 'オフライン'; }
+  else if (S.syncing) { b.classList.add('syncing'); t.textContent = '同期中…'; }
+  else if (S.syncError) { b.classList.add('error'); t.textContent = n ? `未送信${n}件` : '同期エラー'; }
+  else if (n) { b.classList.add('pending'); t.textContent = `未送信${n}件`; }
+  else t.textContent = '同期済み';
+  if (!$('settings').hidden) renderSettingsInfo();
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
+}
+
+// =====================================================================
+// タグ入力欄
+// =====================================================================
+function makeChipField(root, suggestEl, field, prefix, onChange) {
+  let items = [];
+  const input = root.querySelector('input');
+  const chipsEl = root.querySelector('.chips');
+  function render() {
+    chipsEl.innerHTML = items.map((t, i) =>
+      `<span class="chip">${prefix}${esc(t)}<button type="button" data-i="${i}" aria-label="外す">×</button></span>`).join('');
+    renderSuggest();
+  }
+  function renderSuggest() {
+    const q = C.normalizeTag(input.value);
+    const pool = stats(field).map(s => s.name).filter(n => !items.includes(n));
+    const list = (q ? pool.filter(n => n.includes(q)) : pool).slice(0, q ? 10 : 8);
+    suggestEl.innerHTML = list.map(n => `<button type="button" data-n="${esc(n)}">${prefix}${esc(n)}</button>`).join('');
+  }
+  function add(t) {
+    const n = C.normalizeTag(t);
+    if (n && !items.includes(n)) { items.push(n); onChange(); }
+  }
+  function commit() {
+    const parts = C.splitTagInput(input.value);
+    input.value = '';
+    parts.forEach(add);
+    render();
+  }
+  input.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); if (input.value.trim()) commit(); return; }
+    if (e.key === 'Backspace' && !input.value && items.length) { items.pop(); onChange(); render(); }
+  });
+  input.addEventListener('input', (e) => {
+    if (!e.isComposing && /[\s,、，]/.test(input.value)) commit(); else renderSuggest();
+  });
+  input.addEventListener('compositionend', () => { if (/[\s,、，]/.test(input.value)) commit(); else renderSuggest(); });
+  input.addEventListener('blur', () => setTimeout(() => { if (input.value.trim()) commit(); }, 200));
+  chipsEl.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-i]'); if (!b) return;
+    items.splice(Number(b.dataset.i), 1); onChange(); render();
+  });
+  suggestEl.addEventListener('mousedown', (e) => e.preventDefault());
+  suggestEl.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-n]'); if (!b) return;
+    add(b.dataset.n); input.value = ''; render();
+  });
+  root.addEventListener('click', (e) => { if (e.target === root) input.focus(); });
+  return {
+    get() { if (input.value.trim()) commit(); return items.slice(); },
+    set(arr) { items = (arr || []).slice(); input.value = ''; render(); },
+    refresh: renderSuggest,
+  };
+}
+
+// =====================================================================
+// 今日（1日分の入力）
+// =====================================================================
+const tagField = makeChipField($('tags-field'), $('tags-suggest'), 'tags', '#', markDirty);
+const peopleField = makeChipField($('people-field'), $('people-suggest'), 'people', '@', markDirty);
+
+function autoGrow() { const t = $('in-body'); t.style.height = 'auto'; t.style.height = Math.max(120, t.scrollHeight + 2) + 'px'; }
+
+function currentFields() {
+  return { title: $('in-title').value, body: $('in-body').value, tags: tagField.get(), people: peopleField.get() };
+}
+function sameAsSaved(f) {
+  const e = S.entryMap.get(S.day);
+  const a = { title: (f.title || '').trim(), body: (f.body || '').replace(/\s+$/, ''), tags: f.tags.join('\u0001'), people: f.people.join('\u0001') };
+  if (!e) return !a.title && !a.body.trim() && !a.tags && !a.people;
+  return a.title === e.title && a.body === e.body && a.tags === e.tags.join('\u0001') && a.people === e.people.join('\u0001');
+}
+
+let draftTimer = null;
+function markDirty() {
+  S.dirty = !sameAsSaved(currentFields());
+  $('save-btn').disabled = !S.dirty;
+  $('save-state').textContent = S.dirty ? '保存していない変更があります' : savedLabel();
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(saveDraft, 700);
+}
+function savedLabel() {
+  const e = S.entryMap.get(S.day);
+  if (!e) return '';
+  const pending = Array.from(S.outbox.values()).some(o => o.day === S.day);
+  const d = new Date(e.ts);
+  const when = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return pending ? `この端末に保存済み（送信待ち）・${when}` : `保存済み・${when}`;
+}
+
+// 下書き（暗号化して端末だけに置く。アプリが閉じられても消えない）
+async function saveDraft() {
+  if (!S.key) return;
+  const day = S.day;
+  const k = 'draft:' + day;
+  if (!S.dirty) { await idbDel('meta', k).catch(() => {}); return; }
+  const f = currentFields();
+  const enc = await C.encryptJSON(S.key, { ...f, day }, 'draft-' + day);
+  await idbPut('meta', { k, ...enc });
+}
+async function loadDraft(day) {
+  const rec = await idbGet('meta', 'draft:' + day).catch(() => null);
+  if (!rec) return null;
+  try { return await C.decryptJSON(S.key, rec.iv, rec.ciphertext, 'draft-' + day); } catch (e) { return null; }
+}
+
+async function loadForm() {
+  const day = S.day;
+  const e = S.entryMap.get(day);
+  const draft = await loadDraft(day);
+  if (day !== S.day) return;
+  const src = draft || e || { title: '', body: '', tags: [], people: [] };
+  $('in-title').value = src.title || '';
+  $('in-body').value = src.body || '';
+  tagField.set(src.tags || []);
+  peopleField.set(src.people || []);
+  autoGrow();
+  S.remoteChanged = false; $('remote-banner').hidden = true;
+  $('delete-btn').hidden = !e;
+  markDirty();
+  if (draft && S.dirty) $('save-state').textContent = '下書きを復元しました（まだ保存されていません）';
+  renderOcc();
+}
+
+async function saveCurrent() {
+  const f = currentFields();
+  const day = S.day;
+  const existed = S.entryMap.has(day);
+  const v = C.makeVersion(day, f);
+  if (v.deleted && !existed) { toast('何も書かれていません'); return; }
+  if (v.deleted && !confirm('空にして保存すると、この日の記録は削除されます。よろしいですか？')) return;
+  $('save-btn').disabled = true;
+  await putVersions([v]);
+  S.dirty = false;
+  await idbDel('meta', 'draft:' + day).catch(() => {});
+  await loadForm();
+  toast(v.deleted ? '削除しました' : '保存しました');
+  renderToday(true);
+}
+
+async function deleteCurrent() {
+  if (!S.entryMap.has(S.day)) return;
+  if (!confirm(`${C.formatDay(S.day, true)} の記録を削除します。よろしいですか？`)) return;
+  await putVersions([C.makeVersion(S.day, { deleted: true })]);
+  S.dirty = false;
+  await idbDel('meta', 'draft:' + S.day).catch(() => {});
+  await loadForm();
+  renderToday(true);
+  toast('削除しました');
+}
+
+function renderOcc() {
+  const e = S.entryMap.get(S.day);
+  const el = $('occ');
+  if (!e) { el.innerHTML = ''; return; }
+  const parts = [];
+  for (const t of e.tags) {
+    const o = C.occurrence(S.entries, 'tags', t, S.day);
+    parts.push(`<span><b>#${esc(t)}</b> 今年${o.year}回目・通算${o.total}回目</span>`);
+  }
+  for (const p of e.people) {
+    const o = C.occurrence(S.entries, 'people', p, S.day);
+    parts.push(`<span><b>@${esc(p)}</b> 今年${o.year}回目</span>`);
+  }
+  el.innerHTML = parts.join('');
+}
+
+async function openDay(day, opts) {
+  if (!C.isValidDay(day)) return;
+  if (S.dirty) { clearTimeout(draftTimer); await saveDraft(); }
+  S.day = day;
+  S.dirty = false;
+  switchView('today', true);
+  await loadForm();
+  renderToday();
+  if (!opts || !opts.keepScroll) window.scrollTo({ top: 0 });
+}
+
+function renderToday(skipForm) {
+  const day = S.day;
+  $('date-year').textContent = day.slice(0, 4) + '年';
+  $('date-label').textContent = C.formatDay(day).replace(/^\d+年/, '');
+  $('date-picker').value = day;
+  $('goto-today').hidden = day === today();
+  $('next-day').disabled = false;
+  tagField.refresh(); peopleField.refresh();
+  renderOcc();
+  renderMeals();
+  renderPast();
+  renderMissing();
+}
+
+function renderPast() {
+  const list = C.sameDayPast(S.entryMap, S.day);
+  const el = $('past');
+  if (!list.length) { el.innerHTML = `<p class="muted" style="margin:0 2px;">過去のこの日の記録はまだありません。</p>`; return; }
+  el.innerHTML = list.map(({ yearsAgo, entry }) => `
+    <div class="card past" data-day="${entry.day}">
+      <div class="when"><span class="ago">${yearsAgo}年前</span><span class="stamp mono">${esc(C.formatDay(entry.day, true))}</span></div>
+      ${entry.title ? `<h3 class="serif" style="margin:0 0 4px; font-size:16px;">${esc(entry.title)}</h3>` : ''}
+      ${entry.body ? `<div class="pastbody">${esc(entry.body)}</div>` : ''}
+      ${chipsHtml(entry)}
+      ${mealsLine(entry.day)}
+    </div>`).join('');
+}
+
+function renderMissing() {
+  const t = today();
+  const list = C.missingDays(S.entryMap, t, 30).filter(d => d !== S.day);
+  $('missing-wrap').hidden = !list.length;
+  if (!list.length) return;
+  $('missing-count').textContent = `直近30日で${list.length}日`;
+  $('missing').innerHTML = list.slice(0, 21).map(d => {
+    const [, m, dd] = d.split('-').map(Number);
+    return `<button data-day="${d}">${m}/${dd}(${C.weekday(d)})</button>`;
+  }).join('') + (list.length > 21 ? `<span class="muted" style="align-self:center;">ほか${list.length - 21}日（カレンダーで確認）</span>` : '');
+}
+
+// =====================================================================
+// 料理記録（読み取りのみ）
+// =====================================================================
+async function loadRecipes() {
+  if (!supa || !online()) return;
+  try {
+    const all = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supa.from(RECIPE_TABLE).select('id,datetime,title,comment').order('datetime', { ascending: true }).range(from, from + 999);
+      if (error) throw error;
+      all.push(...data);
+      if (data.length < 1000) break;
+    }
+    const m = new Map();
+    for (const r of all) {
+      const d = new Date(r.datetime);
+      if (isNaN(d.getTime())) continue;
+      const day = C.toDay(d);
+      if (!m.has(day)) m.set(day, []);
+      m.get(day).push(r);
+    }
+    S.recipesByDay = m; S.recipesLoaded = true;
+    renderView();
+  } catch (e) { console.warn('料理記録を読めませんでした', e); }
+}
+function recipeLabel(r) {
+  const c = r.comment || '';
+  const shop = /^店名:\s*(.*)\nメニュー:\s*([\s\S]*)$/.exec(c);
+  if (shop) return { title: r.title || shop[2], sub: '🏮 ' + shop[1] };
+  return { title: r.title || '(タイトルなし)', sub: '' };
+}
+function mealsLine(day) {
+  const list = S.recipesByDay.get(day);
+  if (!list || !list.length) return '';
+  const names = list.map(r => recipeLabel(r).title);
+  return `<div class="meals">🍚 ${esc(names.slice(0, 4).join('、'))}${names.length > 4 ? ` ほか${names.length - 4}品` : ''}</div>`;
+}
+function renderMeals() {
+  const list = S.recipesByDay.get(S.day) || [];
+  $('meals-wrap').hidden = !list.length;
+  if (!list.length) { $('meals').innerHTML = ''; return; }
+  $('meals').innerHTML = list.map(r => {
+    const l = recipeLabel(r);
+    const d = new Date(r.datetime);
+    const tm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const ph = S.recipePhotos.get(r.id);
+    return `<div class="card meal" data-rid="${esc(r.id)}">
+      <div class="ph">${ph ? `<img src="${ph}" alt="">` : '🍚'}</div>
+      <div style="min-width:0;"><div class="t">${esc(l.title)}</div><div class="s mono">${tm}${l.sub ? ' ・' + esc(l.sub) : ''}</div></div>
+    </div>`;
+  }).join('');
+  for (const r of list) {
+    if (S.recipePhotos.has(r.id)) continue;
+    S.recipePhotos.set(r.id, null);
+    supa.from(RECIPE_TABLE).select('photo').eq('id', r.id).maybeSingle().then(({ data }) => {
+      if (!data || !data.photo) return;
+      S.recipePhotos.set(r.id, data.photo);
+      const box = document.querySelector(`.meal[data-rid="${CSS.escape(r.id)}"] .ph`);
+      if (box) box.innerHTML = `<img src="${data.photo}" alt="">`;
+    }).catch(() => S.recipePhotos.delete(r.id));
+  }
+}
+
+// =====================================================================
+// カード（一覧共通）
+// =====================================================================
+function chipsHtml(e) {
+  if (!(e.tags.length || e.people.length)) return '';
+  return `<div class="chips-inline">${e.tags.map(t => `<span class="tagchip">#${esc(t)}</span>`).join('')}${e.people.map(p => `<span class="personchip">@${esc(p)}</span>`).join('')}</div>`;
+}
+function highlight(text, kws) {
+  let h = esc(text);
+  for (const k of kws) {
+    if (!k) continue;
+    const ek = esc(k).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    h = h.replace(new RegExp(ek, 'gi'), m => `<mark>${m}</mark>`);
+  }
+  return h;
+}
+function entryCard(e, kws, showYear) {
+  const k = kws || [];
+  const [, m, d] = e.day.split('-').map(Number);
+  // 見出しがない日は、本文をそのまま見せる（見出し欄に本文の冒頭を重ねて出さない）
+  const title = e.title ? `<h3 class="serif ttl">${highlight(e.title, k)}</h3>` : '';
+  return `<article class="card entry" data-day="${e.day}">
+    <div class="head"><span class="d mono">${showYear ? e.day.slice(2, 4) + '/' : ''}${m}/${d}(${C.weekday(e.day)})</span>${title}</div>
+    ${e.body ? `<div class="bd"${e.title ? '' : ' style="color:var(--ink);"'}>${highlight(e.body, k)}</div>` : ''}
+    ${chipsHtml(e)}
+    ${mealsLine(e.day)}
+  </article>`;
+}
+
+// =====================================================================
+// カレンダー
+// =====================================================================
+function renderCalendar() {
+  const [y, m] = S.calMonth.split('-').map(Number);
+  $('cal-label').textContent = `${y}年${m}月`;
+  const first = new Date(y, m - 1, 1);
+  const daysIn = new Date(y, m, 0).getDate();
+  const t = today();
+  const hlTag = $('cal-tag').value;
+  let html = C.WEEKDAYS.map((w, i) => `<div class="wd${i === 0 ? ' sun' : ''}">${w}</div>`).join('');
+  for (let i = 0; i < first.getDay(); i++) html += `<div class="cell empty"></div>`;
+  let count = 0, countable = 0;
+  for (let d = 1; d <= daysIn; d++) {
+    const day = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const e = S.entryMap.get(day);
+    const cls = ['cell'];
+    if (new Date(y, m - 1, d).getDay() === 0) cls.push('sun');
+    if (e) { cls.push('has'); if (e.title) cls.push('tt'); count++; }
+    else if (day > t) cls.push('future');
+    else cls.push('blank');
+    if (day <= t) countable++;
+    if (day === t) cls.push('today');
+    if (hlTag) { if (e && (e.tags.includes(hlTag) || e.people.includes(hlTag))) cls.push('hl'); else if (e) cls.push('dim'); }
+    html += `<button class="${cls.join(' ')}" data-day="${day}"><span class="n mono">${d}</span>${e ? `<span class="h">${esc(C.headline(e, 14))}</span>` : ''}</button>`;
+  }
+  $('calgrid').innerHTML = html;
+  $('cal-count').textContent = countable ? `${countable}日中 ${count}日 記録` : '';
+}
+function fillTagSelect(sel, withPeople, placeholder) {
+  const cur = sel.value;
+  const opts = [`<option value="">${placeholder}</option>`];
+  stats('tags').forEach(s => opts.push(`<option value="${esc(s.name)}">#${esc(s.name)}（${s.total}）</option>`));
+  if (withPeople) stats('people').forEach(s => opts.push(`<option value="${esc(s.name)}">@${esc(s.name)}（${s.total}）</option>`));
+  sel.innerHTML = opts.join('');
+  sel.value = cur;
+}
+
+// =====================================================================
+// 一覧
+// =====================================================================
+function renderList() {
+  document.querySelectorAll('#list-seg button').forEach(b => b.classList.toggle('active', b.dataset.mode === S.listMode));
+  $('list-timeline').hidden = S.listMode !== 'timeline';
+  $('list-events').hidden = S.listMode !== 'events';
+  $('list-search').hidden = S.listMode !== 'search';
+  if (S.listMode === 'timeline') renderTimeline();
+  else if (S.listMode === 'events') renderEvents();
+  else renderSearch();
+}
+
+function monthHead(ym, extra) {
+  const [y, m] = ym.split('-').map(Number);
+  return `<h2 class="serif monthhead">${y}年${m}月<small>${extra || ''}</small></h2>`;
+}
+
+function renderTimeline() {
+  const list = C.sortDesc(S.entries);
+  if (!list.length) { $('list-timeline').innerHTML = `<p class="muted">まだ記録がありません。</p>`; return; }
+  const shown = list.slice(0, S.timelineLimit);
+  const perMonth = new Map();
+  list.forEach(e => perMonth.set(e.day.slice(0, 7), (perMonth.get(e.day.slice(0, 7)) || 0) + 1));
+  let html = '', cur = '';
+  for (const e of shown) {
+    const ym = e.day.slice(0, 7);
+    if (ym !== cur) { cur = ym; html += monthHead(ym, `${perMonth.get(ym)}日分`); }
+    html += entryCard(e);
+  }
+  if (list.length > shown.length) html += `<button class="btn" id="more-btn" style="width:100%; margin-top:8px;">もっと見る（残り${list.length - shown.length}日）</button>`;
+  $('list-timeline').innerHTML = html;
+}
+
+function renderEvents() {
+  const groups = C.groupEvents(S.entries);
+  const years = Array.from(new Set(groups.map(g => g.start.slice(0, 4)))).sort().reverse();
+  if (S.eventYear === null) S.eventYear = years[0] || 'all';
+  $('event-years').innerHTML = years.map(y => `<button data-y="${y}" class="${S.eventYear === y ? 'active' : ''}">${y}年</button>`).join('')
+    + `<button data-y="all" class="${S.eventYear === 'all' ? 'active' : ''}">すべて</button>`;
+  const list = S.eventYear === 'all' ? groups : groups.filter(g => g.start.startsWith(S.eventYear));
+  if (!list.length) { $('event-list').innerHTML = `<p class="muted">イベント（見出しのある日）はまだありません。</p>`; return; }
+  const perMonth = new Map();
+  list.forEach(g => perMonth.set(g.start.slice(0, 7), (perMonth.get(g.start.slice(0, 7)) || 0) + 1));
+  let html = '', cur = '';
+  for (const g of list) {
+    const ym = g.start.slice(0, 7);
+    if (ym !== cur) { cur = ym; html += monthHead(ym, `${perMonth.get(ym)}件`); }
+    if (g.items.length === 1) { html += entryCard(g.items[0]); continue; }
+    const [, m1, d1] = g.start.split('-').map(Number);
+    const [, m2, d2] = g.end.split('-').map(Number);
+    const range = `${m1}/${d1}(${C.weekday(g.start)})〜${m1 === m2 ? '' : m2 + '/'}${d2}(${C.weekday(g.end)})`;
+    html += `<article class="card entry group" data-day="${g.start}">
+      <div class="head"><span class="d mono">${range}</span><h3 class="serif ttl">${g.label ? '#' + esc(g.label) : esc(C.headline(g.items[0]))}</h3></div>
+      <div class="items">${g.items.map(e => `<div data-day="${e.day}"><span class="mono muted" style="font-size:11px;">${Number(e.day.slice(8))}日</span> ${esc(C.headline(e, 40))}</div>`).join('')}</div>
+    </article>`;
+  }
+  $('event-list').innerHTML = html;
+}
+
+function renderSearch() {
+  fillTagSelect($('q-tag'), false, '#タグ すべて');
+  const psel = $('q-person'); const pcur = psel.value;
+  psel.innerHTML = `<option value="">@人物 すべて</option>` + stats('people').map(s => `<option value="${esc(s.name)}">@${esc(s.name)}（${s.total}）</option>`).join('');
+  psel.value = pcur;
+  runSearch();
+}
+function runSearch() {
+  const q = { keyword: $('q-kw').value, tag: $('q-tag').value, person: $('q-person').value, from: $('q-from').value, to: $('q-to').value };
+  const any = q.keyword.trim() || q.tag || q.person || q.from || q.to;
+  if (!any) { $('q-count').textContent = 'キーワードやタグで絞り込めます。'; $('q-results').innerHTML = ''; return; }
+  const res = C.search(S.entries, q);
+  $('q-count').textContent = `${res.length}件`;
+  const kws = q.keyword.trim().split(/\s+/).filter(Boolean);
+  $('q-results').innerHTML = res.slice(0, 200).map(e => entryCard(e, kws, true)).join('')
+    + (res.length > 200 ? `<p class="muted">先頭200件を表示しています。条件を絞ってください。</p>` : '');
+}
+
+// =====================================================================
+// タグ画面
+// =====================================================================
+let openTag = null;
+function renderTags() {
+  document.querySelectorAll('#tag-seg button').forEach(b => b.classList.toggle('active', b.dataset.mode === S.tagMode));
+  const field = S.tagMode;
+  const prefix = field === 'tags' ? '#' : '@';
+  const list = stats(field);
+  const y = today().slice(0, 4);
+  if (!list.length) {
+    $('tag-list').innerHTML = `<p class="muted" style="padding:12px; margin:0;">まだ${field === 'tags' ? 'タグ' : '人物'}がありません。日記の入力欄や、上の「一括タグ付け」で付けられます。</p>`;
+    return;
+  }
+  $('tag-list').innerHTML = list.map(s => {
+    const isOpen = openTag === field + ':' + s.name;
+    let detail = '';
+    if (isOpen) {
+      const days = C.sortDesc(S.entries.filter(e => e[field].includes(s.name))).map(e => e.day);
+      detail = `<div class="detail">
+        <div class="days">${days.map(d => `<button data-day="${d}">${d.slice(2).replace(/-/g, '/')}</button>`).join('')}</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-small" data-rename="${esc(s.name)}">名前を変える・まとめる</button>
+          <button class="btn btn-small btn-danger" data-remove="${esc(s.name)}">この${field === 'tags' ? 'タグ' : '人物'}を外す</button>
+        </div>
+      </div>`;
+    }
+    return `<div class="tagrow">
+      <div class="top" data-toggle="${esc(s.name)}">
+        <span class="nm">${prefix}${esc(s.name)}</span>
+        <span class="cnt">${y}年 <b>${s.year}</b>・通算 <b>${s.total}</b></span>
+      </div>${detail}</div>`;
+  }).join('');
+}
+
+async function retag(field, fromName, toName) {
+  const targets = S.entries.filter(e => e[field].includes(fromName));
+  if (!targets.length) return 0;
+  const base = Date.now();
+  const versions = targets.map((e, i) => {
+    let arr = e[field].filter(t => t !== fromName);
+    if (toName && !arr.includes(toName)) arr = [...arr, toName];
+    return C.makeVersion(e.day, { title: e.title, body: e.body, tags: field === 'tags' ? arr : e.tags, people: field === 'people' ? arr : e.people }, base + i);
+  });
+  await putVersions(versions);
+  return versions.length;
+}
+
+let bulkHits = [];
+function bulkFind() {
+  const kw = $('bulk-kw').value.trim();
+  const field = $('bulk-kind').value;
+  const name = C.normalizeTag($('bulk-name').value);
+  const res = $('bulk-result');
+  if (!kw) { res.innerHTML = `<p class="err">探す言葉を入れてください。</p>`; return; }
+  if (!name) { res.innerHTML = `<p class="err">付ける名前を入れてください。</p>`; return; }
+  const words = kw.split(/[|｜]/).map(s => s.trim()).filter(Boolean);
+  bulkHits = C.findByKeywords(S.entries, kw);
+  const already = bulkHits.filter(e => e[field].includes(name)).length;
+  if (!bulkHits.length) { res.innerHTML = `<p class="muted">見つかりませんでした。</p>`; return; }
+  res.innerHTML = `<p class="muted" style="margin:10px 0 0;">${bulkHits.length}日見つかりました${already ? `（うち${already}日は付与済み）` : ''}。付けない日はチェックを外してください。</p>
+    <div class="hits">${bulkHits.map((e, i) => {
+      const has = e[field].includes(name);
+      const txt = (e.title ? e.title + '　' : '') + e.body;
+      const idx = Math.max(0, Math.min(...words.map(w => { const p = txt.indexOf(w); return p < 0 ? 1e9 : p; })) - 12);
+      const snip = (idx > 0 ? '…' : '') + txt.slice(idx, idx + 70);
+      return `<label class="hit"><input type="checkbox" data-i="${i}" ${has ? 'disabled' : 'checked'}><span><span class="d mono">${esc(e.day)}</span> ${highlight(snip, words)}</span></label>`;
+    }).join('')}</div>
+    <button class="btn btn-ink" id="bulk-apply" style="width:100%; margin-top:10px;">チェックした日に ${field === 'tags' ? '#' : '@'}${esc(name)} を付ける</button>`;
+}
+async function bulkApply() {
+  const field = $('bulk-kind').value;
+  const name = C.normalizeTag($('bulk-name').value);
+  const picked = Array.from(document.querySelectorAll('#bulk-result .hit input:checked')).map(i => bulkHits[Number(i.dataset.i)]);
+  if (!picked.length) { toast('チェックされた日がありません'); return; }
+  const base = Date.now();
+  const versions = picked.map((e, i) => C.makeVersion(e.day, {
+    title: e.title, body: e.body,
+    tags: field === 'tags' ? [...e.tags, name] : e.tags,
+    people: field === 'people' ? [...e.people, name] : e.people,
+  }, base + i));
+  await putVersions(versions);
+  $('bulk-result').innerHTML = `<p class="muted">${versions.length}日に付けました。</p>`;
+  toast(`${versions.length}日に${field === 'tags' ? '#' : '@'}${name} を付けました`);
+  renderTags();
+}
+
+// =====================================================================
+// 画面切り替え
+// =====================================================================
+const TITLES = { today: '日記帳', calendar: 'カレンダー', list: '一覧', tags: 'タグ・人物' };
+function switchView(v, silent) {
+  S.view = v;
+  ['today', 'calendar', 'list', 'tags'].forEach(n => { $('view-' + n).hidden = n !== v; });
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  $('view-title').textContent = TITLES[v];
+  if (!silent) { renderView(); window.scrollTo({ top: 0 }); }
+}
+function renderView() {
+  if (S.view === 'today') renderToday(true);
+  else if (S.view === 'calendar') { fillTagSelect($('cal-tag'), true, 'タグで色付け…'); renderCalendar(); }
+  else if (S.view === 'list') renderList();
+  else if (S.view === 'tags') renderTags();
+}
+
+// =====================================================================
+// 設定
+// =====================================================================
+function renderSettingsInfo() {
+  const versions = S.rows.size + S.outbox.size;
+  const years = Array.from(new Set(S.entries.map(e => e.day.slice(0, 4)))).sort();
+  $('st-summary').textContent = `記録 ${S.entries.length}日分${years.length ? `（${years[0]}〜${years[years.length - 1]}年）` : ''}・保存された版 ${versions}件`;
+  const bad = Array.from(S.dec.values()).filter(v => v === null).length;
+  $('st-sync').textContent = [
+    !supa ? 'サーバーに接続できません（この端末のコピーで動いています）' : online() ? 'オンライン' : 'オフライン（この端末に保存し、つながったら送ります）',
+    S.outbox.size ? `未送信 ${S.outbox.size}件` : '未送信なし',
+    S.syncError ? `エラー：${S.syncError}` : '',
+    bad ? `読めない行 ${bad}件（別の合言葉・壊れたデータ。自動で無視しています）` : '',
+  ].filter(Boolean).join(' / ');
+}
+function openSettings() { renderSettingsInfo(); $('settings').hidden = false; }
+function closeSettings() { $('settings').hidden = true; }
+
+let csvRows = [];
+async function previewCsv() {
+  const files = Array.from($('csv-input').files || []);
+  csvRows = [];
+  for (const f of files) csvRows.push(...C.extractDiaryRows(await f.text()));
+  if (!files.length) { $('csv-preview').textContent = ''; $('csv-go').hidden = true; return; }
+  const plan = C.buildImport(csvRows, { eventTag: $('csv-event').checked, otherTags: $('csv-other').checked }, new Set(S.entryMap.keys()));
+  if (!csvRows.length) { $('csv-preview').textContent = '日記の行が見つかりませんでした（A列が「2025/01/01(水)」の形か確認してください）。'; $('csv-go').hidden = true; return; }
+  const years = Array.from(new Set(plan.versions.map(v => v.day.slice(0, 4)))).sort().join('・');
+  $('csv-preview').textContent = `${plan.versions.length}日分を取り込みます${years ? `（${years}年）` : ''}。` + (plan.skipped.length ? `既に記録がある${plan.skipped.length}日は飛ばします。` : '');
+  $('csv-go').hidden = !plan.versions.length;
+}
+async function runCsvImport() {
+  const plan = C.buildImport(csvRows, { eventTag: $('csv-event').checked, otherTags: $('csv-other').checked }, new Set(S.entryMap.keys()));
+  if (!plan.versions.length) return;
+  const btn = $('csv-go'); btn.disabled = true; btn.textContent = '暗号化しています…';
+  await putVersions(plan.versions);
+  btn.disabled = false; btn.textContent = '取り込む'; btn.hidden = true;
+  $('csv-input').value = '';
+  $('csv-preview').textContent = `${plan.versions.length}日分を取り込みました。送信は自動で続きます（右上の表示で確認できます）。`;
+  renderView(); renderSettingsInfo();
+}
+
+function exportJson() {
+  const data = { app: 'diary', exportedAt: new Date().toISOString(), entries: C.sortDesc(S.entries).reverse().map(e => ({ day: e.day, title: e.title, body: e.body, tags: e.tags, people: e.people })) };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `diary-${today().replace(/-/g, '')}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+async function checkGuard() {
+  const out = $('st-guard-res');
+  if (!supa || !online()) { out.textContent = 'オンラインのときに確認できます。'; return; }
+  out.textContent = '確認中…';
+  const u = await supa.from(TABLE).update({ day: '2000-01-01' }).eq('id', -1);
+  const d = await supa.from(TABLE).delete().eq('id', -1);
+  out.textContent = (u.error && d.error)
+    ? '✓ 守られています：公開キーからの「書き換え」「削除」は拒否されました。'
+    : '⚠ 書き換え・削除が拒否されませんでした。schema.sql をもう一度実行してください。';
+}
+
+async function lockDevice() {
+  if (S.outbox.size && !confirm(`未送信の記録が${S.outbox.size}件あります。ロックすると失われます。それでもロックしますか？`)) return;
+  if (!confirm('この端末から合言葉とコピーを消します。よろしいですか？')) return;
+  await idbClear('rows'); await idbClear('outbox'); await idbClear('meta');
+  location.reload();
+}
+
+// =====================================================================
+// 写真の日付で開く
+// =====================================================================
+function photoDay(file) {
+  return new Promise((resolve) => {
+    const fallback = () => resolve(C.toDay(new Date(file.lastModified || Date.now())));
+    if (typeof EXIF === 'undefined' || /hei[cf]/i.test(file.type + file.name)) { fallback(); return; }
+    try {
+      EXIF.getData(file, function () {
+        const dt = EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'DateTime');
+        const m = /(\d{4}):(\d{2}):(\d{2})/.exec(String(dt || ''));
+        if (m) resolve(`${m[1]}-${m[2]}-${m[3]}`); else fallback();
+      });
+    } catch (e) { fallback(); }
+  });
+}
+
+// =====================================================================
+// 合言葉
+// =====================================================================
+async function unlockWith(pass, pass2) {
+  const err = $('lock-err');
+  err.hidden = true;
+  if (!pass) { err.textContent = '合言葉を入力してください。'; err.hidden = false; return; }
+  const btn = $('lock-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin">◌</span> 鍵を作っています…';
+  try {
+    const key = await C.deriveKey(pass);
+    // 確認に使う行：端末のコピー、なければサーバーから
+    let sample = Array.from(S.rows.values());
+    if (!sample.length && supa && online()) {
+      const { data, error } = await supa.from(TABLE).select('id,day,iv,ciphertext').order('id', { ascending: true }).limit(200);
+      if (error) throw error;
+      sample = data || [];
+    }
+    if (!sample.length && !(supa && online())) {
+      err.textContent = '初めての端末では、ネットにつながった状態で開いてください。'; err.hidden = false; return;
+    }
+    if (sample.length) {
+      const pick = sample.slice(0, 60).concat(sample.slice(-60));
+      const ok = (await Promise.all(pick.map(r => C.decryptRow(key, r)))).some(Boolean);
+      if (!ok) { err.textContent = '合言葉が違います。'; err.hidden = false; return; }
+    } else {
+      // まだ日記が1件もない → 初めての合言葉。念のため2回入力
+      if ($('lock-pass2').hidden) {
+        $('lock-pass2').hidden = false;
+        $('lock-msg').textContent = 'はじめて使う合言葉です。確認のため、もう一度入力してください。';
+        $('lock-pass2').focus();
+        return;
+      }
+      if (pass !== pass2) { err.textContent = '2つの合言葉が一致しません。'; err.hidden = false; return; }
+    }
+    S.key = key;
+    await idbPut('meta', { k: 'key', raw: await C.exportKey(key) });
+    $('lock').hidden = true;
+    $('lock-pass').value = ''; $('lock-pass2').value = '';
+    await start();
+  } catch (e) {
+    err.textContent = '開けませんでした：' + ((e && e.message) || e); err.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = '開く';
+  }
+}
+
+// =====================================================================
+// 起動
+// =====================================================================
+let started = false;
+async function start() {
+  if (started) return;
+  started = true;
+  S.dec.clear();
+  await loadLocal();
+  renderStatus();
+  switchView('today', true);
+  await loadForm();
+  renderToday();
+  sync();
+  subscribeRealtime();
+  loadRecipes();
+}
+
+async function boot() {
+  idb = await idbOpen();
+  const k = await idbGet('meta', 'key');
+  if (k && k.raw) {
+    try { S.key = await C.importKey(k.raw); } catch (e) { S.key = null; }
+  }
+  if (!S.key) {
+    // 合言葉の確認に使うため、端末のコピーだけ先に読む
+    (await idbGetAll('rows')).forEach(r => S.rows.set(r.id, r));
+    $('lock').hidden = false;
+    setTimeout(() => $('lock-pass').focus(), 50);
+    return;
+  }
+  await start();
+}
+
+// =====================================================================
+// イベント登録
+// =====================================================================
+$('lock-btn').addEventListener('click', () => unlockWith($('lock-pass').value, $('lock-pass2').value));
+['lock-pass', 'lock-pass2'].forEach(id => $(id).addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.isComposing) unlockWith($('lock-pass').value, $('lock-pass2').value);
+}));
+
+$('in-title').addEventListener('input', markDirty);
+$('in-body').addEventListener('input', () => { autoGrow(); markDirty(); });
+$('in-title').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); $('in-body').focus(); } });
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && S.view === 'today' && S.dirty) { e.preventDefault(); saveCurrent(); }
+});
+$('save-btn').addEventListener('click', saveCurrent);
+$('delete-btn').addEventListener('click', deleteCurrent);
+$('remote-load').addEventListener('click', async () => { S.dirty = false; await idbDel('meta', 'draft:' + S.day).catch(() => {}); loadForm(); });
+$('prev-day').addEventListener('click', () => openDay(C.addDays(S.day, -1)));
+$('next-day').addEventListener('click', () => openDay(C.addDays(S.day, 1)));
+$('goto-today').addEventListener('click', () => openDay(today()));
+$('date-picker').addEventListener('change', (e) => { if (e.target.value) openDay(e.target.value); });
+$('photo-date-btn').addEventListener('click', () => $('photo-date-input').click());
+$('photo-date-input').addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const d = await photoDay(f);
+  openDay(d);
+  toast(`写真の日付：${C.formatDay(d, true)}`);
+});
+
+// どこかのカード・日付ボタンを押したら、その日を開く
+document.querySelector('main').addEventListener('click', (e) => {
+  if (e.target.closest('.meal img')) { const img = e.target.closest('img'); $('lightbox-img').src = img.src; $('lightbox').hidden = false; return; }
+  if (e.target.closest('#more-btn')) { S.timelineLimit += 120; renderTimeline(); return; }
+  const yb = e.target.closest('#event-years button');
+  if (yb) { S.eventYear = yb.dataset.y; renderEvents(); return; }
+  const tg = e.target.closest('[data-toggle]');
+  if (tg) { const key = S.tagMode + ':' + tg.dataset.toggle; openTag = openTag === key ? null : key; renderTags(); return; }
+  const rn = e.target.closest('[data-rename]');
+  if (rn) {
+    const from = rn.dataset.rename;
+    const to = C.normalizeTag(prompt(`「${from}」の新しい名前（既にある名前にすると、まとめられます）`, from) || '');
+    if (!to || to === from) return;
+    retag(S.tagMode, from, to).then(n => { openTag = S.tagMode + ':' + to; renderTags(); toast(`${n}日分を変更しました`); });
+    return;
+  }
+  const rm = e.target.closest('[data-remove]');
+  if (rm) {
+    const name = rm.dataset.remove;
+    const n = S.entries.filter(x => x[S.tagMode].includes(name)).length;
+    if (!confirm(`${n}日分から「${name}」を外します。日記そのものは消えません。よろしいですか？`)) return;
+    retag(S.tagMode, name, null).then(c => { openTag = null; renderTags(); toast(`${c}日分から外しました`); });
+    return;
+  }
+  const dayEl = e.target.closest('[data-day]');
+  if (dayEl && !e.target.closest('#view-today .form')) openDay(dayEl.dataset.day);
+});
+
+$('tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-view]');
+  if (!b) return;
+  if (b.dataset.view === 'today' && S.view === 'today') { openDay(today()); return; }
+  switchView(b.dataset.view);
+});
+$('cal-prev').addEventListener('click', () => { const [y, m] = S.calMonth.split('-').map(Number); const d = new Date(y, m - 2, 1); S.calMonth = C.toDay(d).slice(0, 7); renderCalendar(); });
+$('cal-next').addEventListener('click', () => { const [y, m] = S.calMonth.split('-').map(Number); const d = new Date(y, m, 1); S.calMonth = C.toDay(d).slice(0, 7); renderCalendar(); });
+$('cal-tag').addEventListener('change', renderCalendar);
+$('list-seg').addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (!b) return; S.listMode = b.dataset.mode; renderList(); });
+$('tag-seg').addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (!b) return; S.tagMode = b.dataset.mode; openTag = null; renderTags(); });
+let searchTimer = null;
+['q-kw', 'q-tag', 'q-person', 'q-from', 'q-to'].forEach(id => $(id).addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 200); }));
+$('bulk-find').addEventListener('click', bulkFind);
+$('bulk-result').addEventListener('click', (e) => { if (e.target.closest('#bulk-apply')) bulkApply(); });
+
+$('settings-btn').addEventListener('click', openSettings);
+$('sync-btn').addEventListener('click', () => { sync(); openSettings(); });
+$('settings-close').addEventListener('click', closeSettings);
+$('settings').addEventListener('click', (e) => { if (e.target === $('settings')) closeSettings(); });
+$('st-sync-now').addEventListener('click', () => sync());
+$('st-full').addEventListener('click', async () => {
+  S.rows.clear(); for (const k of Array.from(S.dec.keys())) if (k[0] === 'r') S.dec.delete(k);
+  await idbClear('rows'); S.lastId = 0; await idbPut('meta', { k: 'lastId', v: 0 });
+  rebuild(); await sync({ full: true }); await decryptPending(); rebuild(); renderView(); toast('読み直しました');
+});
+$('st-guard').addEventListener('click', checkGuard);
+$('st-export').addEventListener('click', exportJson);
+$('st-lock').addEventListener('click', lockDevice);
+$('csv-input').addEventListener('change', previewCsv);
+$('csv-event').addEventListener('change', previewCsv);
+$('csv-other').addEventListener('change', previewCsv);
+$('csv-go').addEventListener('click', runCsvImport);
+$('lightbox').addEventListener('click', () => { $('lightbox').hidden = true; });
+
+window.addEventListener('online', () => { renderStatus(); sync(); });
+window.addEventListener('offline', renderStatus);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S.key) {
+    // 日付が変わっていて、何も書いていなければ今日へ
+    if (!S.dirty && S.view === 'today' && S.day !== today() && S._openedOn && S._openedOn !== today() && S.day === S._openedOn) openDay(today());
+    S._openedOn = today();
+    sync();
+  }
+});
+S._openedOn = today();
+window.addEventListener('scroll', () => $('topbar').classList.toggle('scrolled', window.scrollY > 4), { passive: true });
+
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+boot();
+</script>
+</body>
+</html>
