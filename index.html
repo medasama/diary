@@ -146,6 +146,14 @@
   .meal .ph img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
   .meal .t { font-size: 14px; }
   .meal .s { font-size: 11px; color: var(--ink-light); }
+  .meal { cursor: pointer; }
+  .meal .memo { font-size: 12px; color: var(--ink-light); margin-top: 3px; line-height: 1.45; word-break: break-word; }
+  .meal .stars { color: var(--stamp); font-size: 12px; letter-spacing: 1px; }
+  .drink { cursor: default; }
+  .me-form { display: grid; gap: 4px; }
+  .me-form .lbl { font-size: 12px; color: var(--ink-light); margin-top: 8px; }
+  .me-form input, .me-form textarea { width: 100%; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 3px; background: #fbf9f3; }
+  .me-form textarea { resize: vertical; line-height: 1.6; }
 
   .past { padding: 12px; cursor: pointer; margin-bottom: 8px; }
   .past .when { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
@@ -339,8 +347,14 @@
     </div>
 
     <div id="meals-wrap" hidden>
-      <div class="section-title"><span class="serif">この日の食事</span><span>料理記録より</span></div>
+      <div class="section-title"><span class="serif">この日の食事</span><span>料理記録より・タップで編集</span></div>
       <div class="meal-list" id="meals"></div>
+      <button class="btn btn-small" id="meal-add" style="margin-top:8px;">＋ この日の食事を追加</button>
+    </div>
+
+    <div id="drinks-wrap" hidden>
+      <div class="section-title"><span class="serif">この日のお酒</span><span>ラベル帳より</span></div>
+      <div class="meal-list" id="drinks"></div>
     </div>
 
     <div class="section-title"><span class="serif">過去のこの日</span></div>
@@ -471,6 +485,41 @@
   </div>
 </div>
 
+<!-- ================= 料理記録の編集 ================= -->
+<div class="overlay" id="meal-editor" hidden>
+  <div class="sheet">
+    <h2 class="serif"><span id="me-title">料理を編集</span> <button class="close" id="me-close" aria-label="閉じる">✕</button></h2>
+    <p class="note" style="margin:0 0 10px;">料理記録ツールと同じデータです。ここで保存すると料理記録にも反映されます。写真の追加・変更は料理記録ツールで行ってください。</p>
+    <div class="seg" id="me-mode">
+      <button data-mode="cook" class="active">🍳 自炊</button>
+      <button data-mode="eatout">🍱 外食・惣菜</button>
+    </div>
+    <div class="me-form">
+      <label class="lbl">日付・時間</label>
+      <input type="datetime-local" id="me-datetime" class="mono">
+      <label class="lbl">料理名</label>
+      <input type="text" id="me-name" placeholder="例：無水きのこの炊き込みご飯">
+      <div id="me-cook">
+        <label class="lbl">材料（1行に1つ）</label>
+        <textarea id="me-ingredients" rows="4" placeholder="しめじ&#10;米2合"></textarea>
+        <label class="lbl">作り方・メモ（1行1手順）</label>
+        <textarea id="me-steps" rows="5"></textarea>
+      </div>
+      <div id="me-eatout" hidden>
+        <label class="lbl">店名</label>
+        <input type="text" id="me-shop" placeholder="例：〇〇食堂、セブンイレブン">
+        <label class="lbl">メニュー</label>
+        <input type="text" id="me-menu" placeholder="例：唐揚げ弁当">
+      </div>
+    </div>
+    <p class="err" id="me-err" hidden></p>
+    <div class="form-actions" style="margin-top:14px;">
+      <button class="btn btn-ink" id="me-save">保存</button>
+      <button class="btn btn-danger btn-small" id="me-delete" hidden>削除</button>
+    </div>
+  </div>
+</div>
+
 <div id="lightbox" hidden><img id="lightbox-img" alt="拡大写真"></div>
 <div id="toast" hidden></div>
 
@@ -486,6 +535,7 @@ const SUPABASE_URL = 'https://edfrjxjdzxutcjeayfac.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_GVtanlT_gDwSEQSsZPC_NQ_nEK-60x2';
 const TABLE = 'diary-entries';
 const RECIPE_TABLE = 'recipe-log';
+const LABEL_TABLE = 'label-log';
 
 const C = window.DiaryCore;
 const $ = (id) => document.getElementById(id);
@@ -504,7 +554,8 @@ const S = {
   entries: [],
   lastId: 0,
   syncing: false, syncError: null,
-  recipesByDay: new Map(), recipesLoaded: false, recipePhotos: new Map(),
+  recipes: [], recipesByDay: new Map(), recipesLoaded: false, recipePhotos: new Map(),
+  labelsByDay: new Map(), labelPhotos: new Map(),
   day: today(),
   dirty: false, remoteChanged: false,
   view: 'today', listMode: 'timeline', eventYear: null, tagMode: 'tags',
@@ -921,6 +972,7 @@ function renderToday(skipForm) {
   tagField.refresh(); peopleField.refresh();
   renderOcc();
   renderMeals();
+  renderDrinks();
   renderPast();
   renderMissing();
 }
@@ -952,34 +1004,98 @@ function renderMissing() {
 }
 
 // =====================================================================
-// 料理記録（読み取りのみ）
+// 料理記録（読む・編集する）／ラベル帳（読むだけ）
 // =====================================================================
+function dayOf(iso) { const d = new Date(iso); return isNaN(d.getTime()) ? null : C.toDay(d); }
+function indexRecipes() {
+  const m = new Map();
+  for (const r of S.recipes) {
+    const day = dayOf(r.datetime);
+    if (!day) continue;
+    if (!m.has(day)) m.set(day, []);
+    m.get(day).push(r);
+  }
+  for (const list of m.values()) list.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+  S.recipesByDay = m;
+}
+async function fetchAllRows(table, cols) {
+  const all = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supa.from(table).select(cols).order('datetime', { ascending: true }).range(from, from + 999);
+    if (error) throw error;
+    all.push(...data);
+    if (data.length < 1000) break;
+  }
+  return all;
+}
 async function loadRecipes() {
   if (!supa || !online()) return;
   try {
-    const all = [];
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await supa.from(RECIPE_TABLE).select('id,datetime,title,comment').order('datetime', { ascending: true }).range(from, from + 999);
-      if (error) throw error;
-      all.push(...data);
-      if (data.length < 1000) break;
-    }
-    const m = new Map();
-    for (const r of all) {
-      const d = new Date(r.datetime);
-      if (isNaN(d.getTime())) continue;
-      const day = C.toDay(d);
-      if (!m.has(day)) m.set(day, []);
-      m.get(day).push(r);
-    }
-    S.recipesByDay = m; S.recipesLoaded = true;
+    S.recipes = await fetchAllRows(RECIPE_TABLE, 'id,datetime,title,comment');
+    indexRecipes(); S.recipesLoaded = true;
     renderView();
   } catch (e) { console.warn('料理記録を読めませんでした', e); }
 }
+async function loadLabels() {
+  if (!supa || !online()) return;
+  try {
+    const rows = await fetchAllRows(LABEL_TABLE, 'id,datetime,type,name,rating,tags,memo');
+    const m = new Map();
+    for (const r of rows) {
+      const day = dayOf(r.datetime);
+      if (!day) continue;
+      if (!m.has(day)) m.set(day, []);
+      m.get(day).push(r);
+    }
+    S.labelsByDay = m;
+    if (S.view === 'today') renderDrinks();
+  } catch (e) { console.warn('ラベル帳を読めませんでした', e); }
+}
+// 料理記録ツール・ラベル帳での変更をすぐ反映
+let sideChannel = null;
+function subscribeSideTables() {
+  if (!supa || sideChannel) return;
+  let t1 = null, t2 = null;
+  sideChannel = supa.channel('diary-side-tables')
+    .on('postgres_changes', { event: '*', schema: 'public', table: RECIPE_TABLE }, (p) => {
+      const id = (p.new && p.new.id) || (p.old && p.old.id);
+      if (id != null) S.recipePhotos.delete(id);
+      clearTimeout(t1); t1 = setTimeout(loadRecipes, 800);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: LABEL_TABLE }, (p) => {
+      const id = (p.new && p.new.id) || (p.old && p.old.id);
+      if (id != null) S.labelPhotos.delete(id);
+      clearTimeout(t2); t2 = setTimeout(loadLabels, 800);
+    })
+    .subscribe();
+}
+
+// ---- 料理記録の保存形式（料理記録ツールと同じ書き方。変えると料理記録側で崩れる） ----
+function buildComment(ingredients, stepsText) {
+  const parts = [];
+  if (ingredients.length) parts.push('材料:\n' + ingredients.map(i => '・' + i).join('\n'));
+  if (stepsText.trim()) parts.push('作り方:\n' + stepsText.trim());
+  return parts.join('\n\n');
+}
+function buildEatoutComment(shopName, menuItem) {
+  return `店名: ${shopName.trim()}\nメニュー: ${menuItem.trim()}`;
+}
+function parseComment(comment) {
+  const empty = { mode: 'cook', ingredients: [], steps: '', shopName: '', menuItem: '' };
+  if (!comment) return empty;
+  const shopMatch = comment.match(/^店名:\s*([\s\S]*?)\nメニュー:\s*([\s\S]*)$/);
+  if (shopMatch) return { mode: 'eatout', ingredients: [], steps: '', shopName: shopMatch[1].trim(), menuItem: shopMatch[2].trim() };
+  const materialMatch = comment.match(/材料:\n([\s\S]*?)(?:\n\n作り方:|$)/);
+  const stepsMatch = comment.match(/作り方:\n([\s\S]*)$/);
+  if (materialMatch || stepsMatch) {
+    const ingredients = materialMatch ? materialMatch[1].split('\n').map(x => x.replace(/^・/, '').trim()).filter(Boolean) : [];
+    return { mode: 'cook', ingredients, steps: stepsMatch ? stepsMatch[1].trim() : '', shopName: '', menuItem: '' };
+  }
+  return { mode: 'cook', ingredients: [], steps: comment, shopName: '', menuItem: '' };
+}
 function recipeLabel(r) {
-  const c = r.comment || '';
-  const shop = /^店名:\s*(.*)\nメニュー:\s*([\s\S]*)$/.exec(c);
-  if (shop) return { title: r.title || shop[2], sub: '🏮 ' + shop[1] };
+  const p = parseComment(r.comment || '');
+  if (p.mode === 'eatout') return { title: r.title || p.menuItem || '(タイトルなし)', sub: p.shopName ? '🏮 ' + p.shopName : '' };
   return { title: r.title || '(タイトルなし)', sub: '' };
 }
 function mealsLine(day, kws) {
@@ -1001,10 +1117,12 @@ function mealTextFor(day) {
   const list = S.recipesByDay.get(day);
   return list ? list.map(recipeText).join('\n') : '';
 }
+
 function renderMeals() {
+  // 料理記録が読めたときだけ表示（読めない環境では追加ボタンも出さない）
+  $('meals-wrap').hidden = !S.recipesLoaded;
   const list = S.recipesByDay.get(S.day) || [];
-  $('meals-wrap').hidden = !list.length;
-  if (!list.length) { $('meals').innerHTML = ''; return; }
+  if (!list.length) { $('meals').innerHTML = `<p class="muted" style="margin:0 2px;">この日の料理記録はありません。</p>`; return; }
   $('meals').innerHTML = list.map(r => {
     const l = recipeLabel(r);
     const d = new Date(r.datetime);
@@ -1015,16 +1133,134 @@ function renderMeals() {
       <div style="min-width:0;"><div class="t">${esc(l.title)}</div><div class="s mono">${tm}${l.sub ? ' ・' + esc(l.sub) : ''}</div></div>
     </div>`;
   }).join('');
-  for (const r of list) {
-    if (S.recipePhotos.has(r.id)) continue;
-    S.recipePhotos.set(r.id, null);
-    supa.from(RECIPE_TABLE).select('photo').eq('id', r.id).maybeSingle().then(({ data }) => {
-      if (!data || !data.photo) return;
-      S.recipePhotos.set(r.id, data.photo);
-      const box = document.querySelector(`.meal[data-rid="${CSS.escape(r.id)}"] .ph`);
-      if (box) box.innerHTML = `<img src="${data.photo}" alt="">`;
-    }).catch(() => S.recipePhotos.delete(r.id));
+  for (const r of list) loadSidePhoto(RECIPE_TABLE, 'photo', r.id, S.recipePhotos, `.meal[data-rid="${CSS.escape(r.id)}"] .ph`);
+}
+function loadSidePhoto(table, col, id, cache, selector) {
+  if (cache.has(id)) return;
+  cache.set(id, null);
+  supa.from(table).select(col).eq('id', id).maybeSingle().then(({ data }) => {
+    if (!data || !data[col]) return;
+    cache.set(id, data[col]);
+    const box = document.querySelector(selector);
+    if (box) box.innerHTML = `<img src="${data[col]}" alt="">`;
+  }).catch(() => cache.delete(id));
+}
+function renderDrinks() {
+  const list = S.labelsByDay.get(S.day) || [];
+  $('drinks-wrap').hidden = !list.length;
+  if (!list.length) { $('drinks').innerHTML = ''; return; }
+  $('drinks').innerHTML = list.map(r => {
+    const icon = r.type === 'sake' ? '🍶' : '🍷';
+    const ph = S.labelPhotos.get(r.id);
+    const tags = String(r.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+    const stars = r.rating > 0 ? `<span class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</span>` : '';
+    return `<div class="card meal drink" data-lid="${esc(r.id)}">
+      <div class="ph">${ph ? `<img src="${ph}" alt="">` : icon}</div>
+      <div style="min-width:0;">
+        <div class="t">${icon} ${esc(r.name || '(銘柄未入力)')}</div>
+        <div class="s">${stars}${tags.length ? ' ' + esc(tags.join('・')) : ''}</div>
+        ${r.memo ? `<div class="memo">${esc(r.memo)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  for (const r of list) loadSidePhoto(LABEL_TABLE, 'photo', r.id, S.labelPhotos, `.drink[data-lid="${CSS.escape(r.id)}"] .ph`);
+}
+
+// ---- 料理の編集画面 ----
+let meEditing = null, meMode = 'cook';
+function setMeMode(m) {
+  meMode = m;
+  document.querySelectorAll('#me-mode button').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+  $('me-cook').hidden = m !== 'cook';
+  $('me-eatout').hidden = m !== 'eatout';
+}
+function toLocalInput(iso) {
+  const d = new Date(iso);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+function openMealEditor(id) {
+  const r = id ? S.recipes.find(x => x.id === id) : null;
+  if (id && !r) return;
+  meEditing = r ? r.id : null;
+  $('me-title').textContent = r ? '料理を編集' : 'この日の食事を追加';
+  $('me-err').hidden = true;
+  $('me-delete').hidden = !r;
+  if (r) {
+    const p = parseComment(r.comment || '');
+    setMeMode(p.mode);
+    $('me-datetime').value = toLocalInput(r.datetime);
+    $('me-name').value = r.title || '';
+    $('me-ingredients').value = p.ingredients.join('\n');
+    $('me-steps').value = p.steps;
+    $('me-shop').value = p.shopName;
+    $('me-menu').value = p.menuItem;
+  } else {
+    setMeMode('cook');
+    const now = new Date();
+    const hm = S.day === today() ? `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}` : '19:00';
+    $('me-datetime').value = `${S.day}T${hm}`;
+    ['me-name', 'me-ingredients', 'me-steps', 'me-shop', 'me-menu'].forEach(i => { $(i).value = ''; });
   }
+  $('meal-editor').hidden = false;
+}
+function closeMealEditor() { $('meal-editor').hidden = true; meEditing = null; }
+function meError(msg) { $('me-err').textContent = msg; $('me-err').hidden = false; }
+
+async function saveMeal() {
+  if (!supa || !online()) { meError('料理記録の保存はオンラインのときだけできます。'); return; }
+  const title = $('me-name').value.trim();
+  let comment, fallbackTitle;
+  if (meMode === 'eatout') {
+    const shop = $('me-shop').value.trim(), menu = $('me-menu').value.trim();
+    comment = (shop || menu) ? buildEatoutComment(shop, menu) : '';
+    fallbackTitle = [shop, menu].filter(Boolean).join(' - ');
+  } else {
+    const ingredients = $('me-ingredients').value.split('\n').map(x => x.replace(/^・/, '').trim()).filter(Boolean);
+    comment = buildComment(ingredients, $('me-steps').value);
+    fallbackTitle = comment;
+  }
+  if (!title && !comment) { meError('料理名・材料・作り方（外食なら店名・メニュー）のいずれかを入力してください。'); return; }
+  const dtv = $('me-datetime').value;
+  const dt = new Date(dtv);
+  if (!dtv || isNaN(dt.getTime())) { meError('日付・時間を入れてください。'); return; }
+  const fields = { datetime: dt.toISOString(), title: title || fallbackTitle || '無題の記録', comment };
+  const btn = $('me-save'); btn.disabled = true; btn.textContent = '保存中…';
+  try {
+    if (meEditing) {
+      // 変更した列だけ書き換える（写真には触れない）
+      const { error } = await supa.from(RECIPE_TABLE).update(fields).eq('id', meEditing);
+      if (error) throw error;
+      const r = S.recipes.find(x => x.id === meEditing);
+      if (r) Object.assign(r, fields);
+    } else {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const row = { id, ...fields, photo: null };
+      const { error } = await supa.from(RECIPE_TABLE).insert(row);
+      if (error) throw error;
+      S.recipes.push({ id, ...fields });
+    }
+    indexRecipes();
+    closeMealEditor();
+    renderMeals();
+    toast('料理記録に保存しました');
+  } catch (e) {
+    meError('保存できませんでした：' + ((e && e.message) || e));
+  } finally {
+    btn.disabled = false; btn.textContent = '保存';
+  }
+}
+async function deleteMeal() {
+  if (!meEditing) return;
+  if (!confirm('この料理記録を削除します。写真も含めて料理記録ツールからも消えます。よろしいですか？')) return;
+  const { error } = await supa.from(RECIPE_TABLE).delete().eq('id', meEditing);
+  if (error) { meError('削除できませんでした：' + error.message); return; }
+  S.recipes = S.recipes.filter(x => x.id !== meEditing);
+  S.recipePhotos.delete(meEditing);
+  indexRecipes();
+  closeMealEditor();
+  renderMeals();
+  toast('削除しました');
 }
 
 // =====================================================================
@@ -1435,6 +1671,8 @@ async function start() {
   sync();
   subscribeRealtime();
   loadRecipes();
+  loadLabels();
+  subscribeSideTables();
 }
 
 async function boot() {
@@ -1487,6 +1725,10 @@ $('photo-date-input').addEventListener('change', async (e) => {
 // どこかのカード・日付ボタンを押したら、その日を開く
 document.querySelector('main').addEventListener('click', (e) => {
   if (e.target.closest('.meal img')) { const img = e.target.closest('img'); $('lightbox-img').src = img.src; $('lightbox').hidden = false; return; }
+  const mealCard = e.target.closest('.meal[data-rid]');
+  if (mealCard) { openMealEditor(mealCard.dataset.rid); return; }
+  if (e.target.closest('.drink')) return;
+  if (e.target.closest('#meal-add')) { openMealEditor(null); return; }
   if (e.target.closest('#more-btn')) { S.timelineLimit += 120; renderTimeline(); return; }
   const yb = e.target.closest('#event-years button');
   if (yb) { S.eventYear = yb.dataset.y; renderEvents(); return; }
@@ -1548,8 +1790,13 @@ $('csv-event').addEventListener('change', previewCsv);
 $('csv-other').addEventListener('change', previewCsv);
 $('csv-go').addEventListener('click', runCsvImport);
 $('lightbox').addEventListener('click', () => { $('lightbox').hidden = true; });
+$('me-mode').addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (b) setMeMode(b.dataset.mode); });
+$('me-save').addEventListener('click', saveMeal);
+$('me-delete').addEventListener('click', deleteMeal);
+$('me-close').addEventListener('click', closeMealEditor);
+$('meal-editor').addEventListener('click', (e) => { if (e.target === $('meal-editor')) closeMealEditor(); });
 
-window.addEventListener('online', () => { renderStatus(); sync(); });
+window.addEventListener('online', () => { renderStatus(); sync(); if (S.key) { loadRecipes(); loadLabels(); } });
 window.addEventListener('offline', renderStatus);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && S.key) {
